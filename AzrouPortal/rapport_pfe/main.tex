@@ -1,0 +1,150 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage[french]{babel}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{fancyhdr}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{tocloft}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{subfig}
+\usepackage{caption}
+\usepackage{enumitem}
+\usepackage{appendix}
+\usepackage{pdfpages}
+\usepackage{tikz}
+\usetikzlibrary{shapes,arrows,positioning}
+
+% Configuration de la page
+\geometry{left=3cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+\onehalfspacing
+
+% Configuration des en-têtes et pieds de page
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\leftmark}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Configuration des titres
+\titleformat{\chapter}[display]
+{\normalfont\huge\bfseries}{\chaptertitlename\ \thechapter}{20pt}{\Huge}
+\titlespacing*{\chapter}{0pt}{-50pt}{40pt}
+
+% Configuration des liens hypertexte
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    citecolor=green,
+    pdfauthor={Anas Benomar},
+    pdftitle={Développement d'une Plateforme Numérique Municipale pour la Commune d'Azrou},
+}
+
+% Configuration du code source
+\lstset{
+    backgroundcolor=\color{gray!10},
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    captionpos=b,
+    commentstyle=\color{green!50!black},
+    keywordstyle=\color{blue},
+    stringstyle=\color{orange},
+    numberstyle=\tiny\color{gray},
+    numbers=left,
+    frame=single,
+    rulecolor=\color{black!30},
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4
+}
+
+% Commandes personnalisées
+\newcommand{\university}{École Supérieure d'Ingénierie en Sciences Appliquées}
+\newcommand{\organization}{Commune d'Azrou}
+\newcommand{\projecttitle}{Développement d'une Plateforme Numérique Municipale pour la Commune d'Azrou}
+\newcommand{\author}{Anas BENOMAR}
+\newcommand{\supervisor}{M. MEKOUAR Othmane}
+\newcommand{\academicyear}{2024-2025}
+
+\begin{document}
+
+% Page de garde
+\input{chapters/page_garde}
+
+% Dédicace
+\input{chapters/dedicace}
+
+% Remerciements
+\input{chapters/remerciements}
+
+% Résumé
+\input{chapters/resume}
+
+% Abstract (en anglais)
+\input{chapters/abstract}
+
+% Table des matières
+\tableofcontents
+\newpage
+
+% Liste des figures
+\listoffigures
+\newpage
+
+% Liste des tableaux
+\listoftables
+\newpage
+
+% Liste des acronymes
+\input{chapters/acronymes}
+
+% Introduction générale
+\input{chapters/introduction}
+
+% Chapitre 1 : Contexte et problématique
+\input{chapters/chapitre1_contexte}
+
+% Chapitre 2 : État de l'art et analyse des besoins
+\input{chapters/chapitre2_analyse}
+
+% Chapitre 3 : Conception et architecture
+\input{chapters/chapitre3_conception}
+
+% Chapitre 4 : Implémentation et développement
+\input{chapters/chapitre4_implementation}
+
+% Chapitre 5 : Tests et validation
+\input{chapters/chapitre5_tests}
+
+% Chapitre 6 : Déploiement et perspectives
+\input{chapters/chapitre6_deploiement}
+
+% Conclusion générale
+\input{chapters/conclusion}
+
+% Bibliographie
+\bibliographystyle{plain}
+\bibliography{references}
+
+% Annexes
+\appendix
+\input{chapters/annexe_a}
+\input{chapters/annexe_b}
+
+\end{document}

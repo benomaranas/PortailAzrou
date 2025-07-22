@@ -1,0 +1,244 @@
+\chapter{Analyse des besoins et spécification des exigences}
+
+\section{Introduction}
+
+Ce chapitre présente l'analyse approfondie des besoins des différents acteurs du système et la spécification des exigences fonctionnelles et non-fonctionnelles. Cette analyse constitue la base pour la conception de notre solution.
+
+\section{Méthodologie d'analyse des besoins}
+
+\subsection{Approche adoptée}
+
+Notre approche d'analyse des besoins s'appuie sur :
+\begin{itemize}
+    \item Des entretiens semi-directifs avec les parties prenantes
+    \item L'observation directe des processus existants
+    \item L'analyse documentaire des procédures
+    \item Des enquêtes auprès des citoyens
+\end{itemize}
+
+\subsection{Parties prenantes identifiées}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|p{8cm}|}
+\hline
+\textbf{Acteur} & \textbf{Rôle et responsabilités} \\
+\hline
+Citoyens & Utilisateurs finaux du système, demandeurs de services \\
+\hline
+Agents d'accueil & Première interface avec les citoyens, gestion des plannings \\
+\hline
+Personnel des services & Prestataires de services, gestion de leur planning \\
+\hline
+Superviseurs & Gestion des équipes et validation des demandes \\
+\hline
+Administrateur système & Gestion technique de l'application \\
+\hline
+Direction & Suivi des performances et prise de décisions \\
+\hline
+\end{tabular}
+\caption{Identification des parties prenantes}
+\label{tab:stakeholders}
+\end{table}
+
+\section{Analyse des besoins par acteur}
+
+\subsection{Besoins des citoyens}
+
+\subsubsection{Besoins fonctionnels}
+\begin{itemize}
+    \item Consulter les services disponibles et leurs modalités
+    \item Prendre rendez-vous en ligne à tout moment
+    \item Modifier ou annuler un rendez-vous
+    \item Recevoir des notifications de confirmation et de rappel
+    \item Consulter l'historique de ses rendez-vous
+    \item Signaler des problèmes ou faire des suggestions
+\end{itemize}
+
+\subsubsection{Besoins non-fonctionnels}
+\begin{itemize}
+    \item Interface simple et intuitive
+    \item Accessibilité sur mobile et desktop
+    \item Temps de réponse rapide (< 3 secondes)
+    \item Disponibilité 24h/24 et 7j/7
+    \item Sécurité des données personnelles
+\end{itemize}
+
+\subsection{Besoins du personnel municipal}
+
+\subsubsection{Agents d'accueil}
+\textbf{Besoins fonctionnels :}
+\begin{itemize}
+    \item Consulter les plannings de tous les services
+    \item Prendre rendez-vous pour les citoyens (canal téléphonique)
+    \item Modifier les rendez-vous en cas d'urgence
+    \item Générer des rapports d'activité
+\end{itemize}
+
+\textbf{Besoins non-fonctionnels :}
+\begin{itemize}
+    \item Interface ergonomique adaptée à un usage intensif
+    \item Formation minimale requise
+    \item Fiabilité du système
+\end{itemize}
+
+\subsubsection{Personnel des services}
+\textbf{Besoins fonctionnels :}
+\begin{itemize}
+    \item Consulter leur planning personnel
+    \item Modifier leur disponibilité
+    \item Accéder aux informations des rendez-vous
+    \item Marquer les rendez-vous comme honorés ou manqués
+\end{itemize}
+
+\subsection{Besoins des superviseurs et de la direction}
+
+\subsubsection{Besoins fonctionnels}
+\begin{itemize}
+    \item Consulter les statistiques d'utilisation
+    \item Analyser les performances des services
+    \item Gérer les comptes utilisateurs et les permissions
+    \item Configurer les paramètres du système
+    \item Exporter des rapports détaillés
+\end{itemize}
+
+\subsubsection{Besoins non-fonctionnels}
+\begin{itemize}
+    \item Tableaux de bord visuels et informatifs
+    \item Capacité d'analyse des tendances
+    \item Alertes automatiques en cas d'anomalies
+\end{itemize}
+
+\section{Analyse de l'existant et identification des problèmes}
+
+\subsection{Processus actuel de prise de rendez-vous}
+
+\begin{figure}[h]
+    \centering
+    % Diagramme de processus actuel
+    % \includegraphics[width=\textwidth]{images/current_process.png}
+    \caption{Processus actuel de prise de rendez-vous}
+    \label{fig:current_process}
+\end{figure}
+
+\subsection{Problèmes identifiés}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|p{4cm}|p{4cm}|p{4cm}|}
+\hline
+\textbf{Problème} & \textbf{Impact} & \textbf{Fréquence} \\
+\hline
+Files d'attente longues & Insatisfaction citoyenne & Quotidienne \\
+\hline
+Doubles réservations & Conflits de planning & Hebdomadaire \\
+\hline
+Rendez-vous manqués non signalés & Perte de créneaux & Quotidienne \\
+\hline
+Difficultés de planification & Sous/sur-utilisation des ressources & Mensuelle \\
+\hline
+Manque de traçabilité & Difficultés de suivi & Permanente \\
+\hline
+\end{tabular}
+\caption{Problèmes identifiés dans le processus actuel}
+\label{tab:problems}
+\end{table}
+
+\section{Spécification des exigences}
+
+\subsection{Exigences fonctionnelles}
+
+\subsubsection{Module de gestion des rendez-vous}
+\begin{itemize}
+    \item \textbf{EF-001} : Le système doit permettre aux citoyens de consulter les créneaux disponibles
+    \item \textbf{EF-002} : Le système doit permettre la réservation en ligne de rendez-vous
+    \item \textbf{EF-003} : Le système doit envoyer une confirmation automatique par email
+    \item \textbf{EF-004} : Le système doit permettre la modification et l'annulation de rendez-vous
+    \item \textbf{EF-005} : Le système doit envoyer des rappels automatiques
+\end{itemize}
+
+\subsubsection{Module d'administration}
+\begin{itemize}
+    \item \textbf{EF-006} : Le système doit permettre la gestion des utilisateurs et des permissions
+    \item \textbf{EF-007} : Le système doit permettre la configuration des services et créneaux
+    \item \textbf{EF-008} : Le système doit fournir des tableaux de bord statistiques
+    \item \textbf{EF-009} : Le système doit permettre l'export de rapports
+    \item \textbf{EF-010} : Le système doit permettre la gestion des problèmes signalés
+\end{itemize}
+
+\subsubsection{Module de notifications}
+\begin{itemize}
+    \item \textbf{EF-011} : Le système doit envoyer des notifications par email
+    \item \textbf{EF-012} : Le système doit permettre la configuration des modèles de messages
+    \item \textbf{EF-013} : Le système doit enregistrer l'historique des notifications
+\end{itemize}
+
+\subsection{Exigences non-fonctionnelles}
+
+\subsubsection{Performance}
+\begin{itemize}
+    \item \textbf{ENF-001} : Le temps de réponse ne doit pas dépasser 3 secondes
+    \item \textbf{ENF-002} : Le système doit supporter 100 utilisateurs concurrent
+    \item \textbf{ENF-003} : La disponibilité du système doit être de 99.5\%
+\end{itemize}
+
+\subsubsection{Sécurité}
+\begin{itemize}
+    \item \textbf{ENF-004} : Toutes les données doivent être chiffrées en transit et au repos
+    \item \textbf{ENF-005} : L'authentification doit être sécurisée (hachage des mots de passe)
+    \item \textbf{ENF-006} : Le système doit respecter le RGPD pour la protection des données
+\end{itemize}
+
+\subsubsection{Utilisabilité}
+\begin{itemize}
+    \item \textbf{ENF-007} : L'interface doit être responsive (mobile, tablette, desktop)
+    \item \textbf{ENF-008} : Le système doit être accessible aux personnes handicapées
+    \item \textbf{ENF-009} : L'apprentissage du système ne doit pas dépasser 30 minutes
+\end{itemize}
+
+\section{Analyse des solutions existantes}
+
+\subsection{Étude comparative des solutions du marché}
+
+\begin{table}[h]
+\centering
+\scriptsize
+\begin{tabular}{|p{2cm}|p{2cm}|p{2cm}|p{2cm}|p{2cm}|}
+\hline
+\textbf{Solution} & \textbf{Avantages} & \textbf{Inconvénients} & \textbf{Coût} & \textbf{Adaptabilité} \\
+\hline
+Solution A & Interface moderne & Coût élevé & 50k MAD/an & Faible \\
+\hline
+Solution B & Open source & Fonctionnalités limitées & Gratuit & Élevée \\
+\hline
+Solution C & Très complète & Complexité élevée & 80k MAD/an & Moyenne \\
+\hline
+Solution sur mesure & Parfaitement adaptée & Temps de développement & 120k MAD & Très élevée \\
+\hline
+\end{tabular}
+\caption{Comparaison des solutions existantes}
+\label{tab:solutions_comparison}
+\end{table}
+
+\subsection{Justification du choix du développement sur mesure}
+
+Le développement d'une solution sur mesure a été retenu pour les raisons suivantes :
+\begin{itemize}
+    \item Adaptation parfaite aux processus spécifiques de la commune
+    \item Possibilité d'évolution et de maintenance
+    \item Contrôle total sur la sécurité et les données
+    \item Formation et transfert de compétences à l'équipe technique
+    \item Coût à long terme plus avantageux
+\end{itemize}
+
+\section{Conclusion}
+
+Cette analyse détaillée des besoins nous a permis d'identifier clairement les exigences fonctionnelles et non-fonctionnelles de notre système. Les spécifications établies serviront de base pour la phase de conception qui fait l'objet du chapitre suivant.
+
+Les principales conclusions de cette analyse sont :
+\begin{itemize}
+    \item Besoin urgent de digitalisation du processus de prise de rendez-vous
+    \item Importance de l'expérience utilisateur pour l'adoption du système
+    \item Nécessité d'une solution flexible et évolutive
+    \item Importance des aspects sécuritaires et de confidentialité
+\end{itemize}

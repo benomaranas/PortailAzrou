@@ -1,0 +1,1043 @@
+\chapter{Annexe A : Code source principal}
+
+Cette annexe présente les extraits de code source les plus significatifs de notre application.
+
+\section{Configuration de la base de données}
+
+\subsection{Schéma MongoDB - Modèle Utilisateur}
+
+\begin{lstlisting}[language=JavaScript, caption=userModel.js - Modèle utilisateur complet]
+import mongoose from 'mongoose';
+
+const userSchema = new mongoose.Schema({
+  name: { 
+    type: String, 
+    required: true,
+    trim: true,
+    minlength: 2,
+    maxlength: 100
+  },
+  email: { 
+    type: String, 
+    required: true, 
+    unique: true,
+    lowercase: true,
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Email invalide']
+  },
+  password: { 
+    type: String, 
+    required: true,
+    minlength: 6
+  },
+  image: { 
+    type: String, 
+    default: 'https://res.cloudinary.com/daxvcwdwb/image/upload/v1234567890/default_avatar.png' 
+  },
+  address: {
+    line1: { type: String, default: '', maxlength: 200 },
+    line2: { type: String, default: '', maxlength: 200 }
+  },
+  gender: { 
+    type: String, 
+    default: 'Not Selected',
+    enum: ['Male', 'Female', 'Not Selected']
+  },
+  dob: { 
+    type: String, 
+    default: '2000-01-01',
+    match: [/^\d{4}-\d{2}-\d{2}$/, 'Format de date invalide (YYYY-MM-DD)']
+  },
+  phone: { 
+    type: String, 
+    default: '000000000',
+    match: [/^[0-9]{9,15}$/, 'Numéro de téléphone invalide']
+  },
+  role: {
+    type: String,
+    enum: ['citizen', 'agent', 'supervisor', 'admin'],
+    default: 'citizen'
+  },
+  isVerified: {
+    type: Boolean,
+    default: false
+  },
+  verificationToken: {
+    type: String,
+    default: null
+  },
+  resetPasswordToken: {
+    type: String,
+    default: null
+  },
+  resetPasswordExpires: {
+    type: Date,
+    default: null
+  },
+  lastLogin: {
+    type: Date,
+    default: null
+  },
+  isActive: {
+    type: Boolean,
+    default: true
+  }
+}, { 
+  minimize: false,
+  timestamps: true
+});
+
+// Index pour améliorer les performances
+userSchema.index({ email: 1 });
+userSchema.index({ role: 1 });
+userSchema.index({ isActive: 1 });
+
+// Méthodes du modèle
+userSchema.methods.toJSON = function() {
+  const user = this.toObject();
+  delete user.password;
+  delete user.verificationToken;
+  delete user.resetPasswordToken;
+  delete user.resetPasswordExpires;
+  return user;
+};
+
+const userModel = mongoose.model('user', userSchema);
+export default userModel;
+\end{lstlisting}
+
+\section{API Backend - Contrôleurs}
+
+\subsection{Contrôleur de gestion des rendez-vous}
+
+\begin{lstlisting}[language=JavaScript, caption=appointmentController.js - Gestion complète des rendez-vous]
+import appointmentModel from '../models/appointmentModel.js';
+import doctorModel from '../models/doctorModel.js';
+import userModel from '../models/userModel.js';
+import { sendConfirmationEmail, sendCancellationEmail } from '../services/emailService.js';
+
+// Réserver un rendez-vous avec validation complète
+const bookAppointment = async (req, res) => {
+  try {
+    const { userId, docId, slotDate, slotTime } = req.body;
+    
+    // Validation des paramètres
+    if (!userId || !docId || !slotDate || !slotTime) {
+      return res.json({
+        success: false,
+        message: 'Tous les champs sont obligatoires'
+      });
+    }
+    
+    // Vérifier que l'utilisateur existe
+    const userData = await userModel.findById(userId).select('-password');
+    if (!userData || !userData.isActive) {
+      return res.json({
+        success: false,
+        message: 'Utilisateur non trouvé ou inactif'
+      });
+    }
+    
+    // Vérifier que le service/agent existe et est disponible
+    const docData = await doctorModel.findById(docId).select('-password');
+    if (!docData) {
+      return res.json({
+        success: false,
+        message: 'Service non trouvé'
+      });
+    }
+    
+    if (!docData.available) {
+      return res.json({
+        success: false,
+        message: 'Service temporairement indisponible'
+      });
+    }
+    
+    // Vérifier que la date n'est pas dans le passé
+    const selectedDate = new Date(slotDate.replace(/_/g, '/'));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    if (selectedDate < today) {
+      return res.json({
+        success: false,
+        message: 'Impossible de réserver dans le passé'
+      });
+    }
+    
+    // Vérifier la disponibilité du créneau
+    let slots_booked = docData.slots_booked || {};
+    
+    if (slots_booked[slotDate] && slots_booked[slotDate].includes(slotTime)) {
+      return res.json({
+        success: false,
+        message: 'Ce créneau n\'est plus disponible'
+      });
+    }
+    
+    // Vérifier que l'utilisateur n'a pas déjà un rendez-vous à ce créneau
+    const existingAppointment = await appointmentModel.findOne({
+      userId,
+      slotDate,
+      slotTime,
+      cancelled: false
+    });
+    
+    if (existingAppointment) {
+      return res.json({
+        success: false,
+        message: 'Vous avez déjà un rendez-vous à ce créneau'
+      });
+    }
+    
+    // Mettre à jour les créneaux réservés
+    if (!slots_booked[slotDate]) {
+      slots_booked[slotDate] = [];
+    }
+    slots_booked[slotDate].push(slotTime);
+    
+    // Créer le rendez-vous
+    const appointmentData = {
+      userId,
+      docId,
+      userData: {
+        name: userData.name,
+        email: userData.email,
+        phone: userData.phone,
+        address: userData.address
+      },
+      docData: {
+        name: docData.name,
+        department: docData.speciality,
+        email: docData.email,
+        image: docData.image
+      },
+      amount: docData.fees || 0,
+      slotTime,
+      slotDate,
+      date: Date.now(),
+      status: 'scheduled',
+      createdBy: 'user'
+    };
+    
+    const newAppointment = new appointmentModel(appointmentData);
+    await newAppointment.save();
+    
+    // Mettre à jour les créneaux réservés du service
+    await doctorModel.findByIdAndUpdate(docId, { 
+      slots_booked,
+      $inc: { appointmentsCount: 1 }
+    });
+    
+    // Envoyer l'email de confirmation
+    try {
+      await sendConfirmationEmail(userData.email, appointmentData);
+    } catch (emailError) {
+      console.log('Erreur envoi email:', emailError);
+      // Ne pas faire échouer la réservation pour un problème d'email
+    }
+    
+    // Log de l'action pour audit
+    console.log(`Rendez-vous créé: User ${userId} - Service ${docId} - Date ${slotDate} ${slotTime}`);
+    
+    res.json({
+      success: true,
+      message: 'Rendez-vous réservé avec succès',
+      appointmentId: newAppointment._id
+    });
+    
+  } catch (error) {
+    console.log('Erreur booking appointment:', error);
+    res.json({
+      success: false,
+      message: 'Erreur serveur. Veuillez réessayer.'
+    });
+  }
+};
+
+// Annuler un rendez-vous
+const cancelAppointment = async (req, res) => {
+  try {
+    const { userId, appointmentId } = req.body;
+    
+    // Trouver le rendez-vous
+    const appointment = await appointmentModel.findById(appointmentId);
+    
+    if (!appointment) {
+      return res.json({
+        success: false,
+        message: 'Rendez-vous non trouvé'
+      });
+    }
+    
+    // Vérifier que l'utilisateur peut annuler ce rendez-vous
+    if (appointment.userId !== userId) {
+      return res.json({
+        success: false,
+        message: 'Vous n\'êtes pas autorisé à annuler ce rendez-vous'
+      });
+    }
+    
+    if (appointment.cancelled) {
+      return res.json({
+        success: false,
+        message: 'Ce rendez-vous est déjà annulé'
+      });
+    }
+    
+    // Vérifier que le rendez-vous peut encore être annulé (ex: pas moins de 2h avant)
+    const appointmentDateTime = new Date(appointment.slotDate.replace(/_/g, '/') + ' ' + appointment.slotTime);
+    const now = new Date();
+    const timeDiff = appointmentDateTime.getTime() - now.getTime();
+    const hoursDiff = timeDiff / (1000 * 3600);
+    
+    if (hoursDiff < 2) {
+      return res.json({
+        success: false,
+        message: 'Impossible d\'annuler moins de 2 heures avant le rendez-vous'
+      });
+    }
+    
+    // Marquer comme annulé
+    await appointmentModel.findByIdAndUpdate(appointmentId, {
+      cancelled: true,
+      cancelledAt: new Date(),
+      cancelledBy: 'user'
+    });
+    
+    // Libérer le créneau
+    const docData = await doctorModel.findById(appointment.docId);
+    if (docData && docData.slots_booked && docData.slots_booked[appointment.slotDate]) {
+      const slotIndex = docData.slots_booked[appointment.slotDate].indexOf(appointment.slotTime);
+      if (slotIndex > -1) {
+        docData.slots_booked[appointment.slotDate].splice(slotIndex, 1);
+        await docData.save();
+      }
+    }
+    
+    // Envoyer email de confirmation d'annulation
+    try {
+      const userData = await userModel.findById(userId).select('-password');
+      await sendCancellationEmail(userData.email, appointment);
+    } catch (emailError) {
+      console.log('Erreur envoi email annulation:', emailError);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Rendez-vous annulé avec succès'
+    });
+    
+  } catch (error) {
+    console.log('Erreur cancel appointment:', error);
+    res.json({
+      success: false,
+      message: 'Erreur serveur'
+    });
+  }
+};
+
+export { bookAppointment, cancelAppointment };
+\end{lstlisting}
+
+\section{Frontend React - Composants principaux}
+
+\subsection{Composant de réservation de rendez-vous}
+
+\begin{lstlisting}[language=JavaScript, caption=AppointmentForm.jsx - Formulaire de réservation avec validation]
+import React, { useContext, useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { AppContext } from '../context/AppContext';
+import { toast } from 'react-hot-toast';
+import axios from 'axios';
+
+const AppointmentForm = () => {
+  const { docId } = useParams();
+  const navigate = useNavigate();
+  const { 
+    doctors, 
+    currencySymbol, 
+    backendUrl, 
+    token, 
+    getDoctorsData,
+    userData 
+  } = useContext(AppContext);
+  
+  // États pour la gestion des créneaux
+  const [docInfo, setDocInfo] = useState(null);
+  const [docSlots, setDocSlots] = useState([]);
+  const [slotIndex, setSlotIndex] = useState(0);
+  const [slotTime, setSlotTime] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState('');
+  
+  // Configuration des jours de la semaine
+  const daysOfWeek = ['DIM', 'LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM'];
+  
+  // Récupérer les informations du service/agent
+  const fetchDocInfo = async () => {
+    try {
+      const docInfo = doctors.find(doc => doc._id === docId);
+      if (docInfo) {
+        setDocInfo(docInfo);
+      } else {
+        toast.error('Service non trouvé');
+        navigate('/services');
+      }
+    } catch (error) {
+      console.error('Erreur récupération service:', error);
+      toast.error('Erreur lors du chargement');
+    }
+  };
+  
+  // Générer les créneaux disponibles
+  const getAvailableSlots = async () => {
+    if (!docInfo) return;
+    
+    setDocSlots([]);
+    let today = new Date();
+    
+    for (let i = 0; i < 7; i++) {
+      let currentDate = new Date(today);
+      currentDate.setDate(today.getDate() + i);
+      
+      // Définir les heures d'ouverture (8h-17h)
+      let endTime = new Date(currentDate);
+      endTime.setHours(17, 0, 0, 0);
+      
+      // Pour aujourd'hui, commencer à l'heure actuelle + 1h
+      if (today.getDate() === currentDate.getDate()) {
+        currentDate.setHours(
+          currentDate.getHours() > 8 ? currentDate.getHours() + 1 : 8
+        );
+        currentDate.setMinutes(currentDate.getMinutes() > 30 ? 30 : 0);
+      } else {
+        currentDate.setHours(8);
+        currentDate.setMinutes(0);
+      }
+      
+      let timeSlots = [];
+      
+      // Générer les créneaux de 30 minutes
+      while (currentDate < endTime) {
+        let formattedTime = currentDate.toLocaleTimeString(
+          'fr-FR', 
+          { hour: '2-digit', minute: '2-digit', hour12: false }
+        );
+        
+        let day = currentDate.getDate();
+        let month = currentDate.getMonth() + 1;
+        let year = currentDate.getFullYear();
+        
+        const slotDate = day + "_" + month + "_" + year;
+        
+        // Vérifier si le créneau est disponible
+        const isSlotBooked = docInfo.slots_booked && 
+                            docInfo.slots_booked[slotDate] && 
+                            docInfo.slots_booked[slotDate].includes(formattedTime);
+        
+        // Éviter les créneaux à l'heure du déjeuner (12h-14h)
+        const isLunchTime = currentDate.getHours() >= 12 && currentDate.getHours() < 14;
+        
+        if (!isSlotBooked && !isLunchTime) {
+          timeSlots.push({
+            datetime: new Date(currentDate),
+            time: formattedTime,
+            slotDate: slotDate
+          });
+        }
+        
+        currentDate.setMinutes(currentDate.getMinutes() + 30);
+      }
+      
+      setDocSlots(prev => ([...prev, timeSlots]));
+    }
+  };
+  
+  // Valider la sélection avant réservation
+  const validateSelection = () => {
+    if (!token) {
+      toast.error('Veuillez vous connecter pour réserver');
+      navigate('/login');
+      return false;
+    }
+    
+    if (!userData) {
+      toast.error('Profil utilisateur non chargé');
+      return false;
+    }
+    
+    if (!slotTime) {
+      toast.error('Veuillez sélectionner un créneau horaire');
+      return false;
+    }
+    
+    if (!selectedDate) {
+      toast.error('Veuillez sélectionner une date');
+      return false;
+    }
+    
+    return true;
+  };
+  
+  // Réserver le rendez-vous
+  const bookAppointment = async () => {
+    if (!validateSelection()) return;
+    
+    setLoading(true);
+    
+    try {
+      const selectedSlot = docSlots[slotIndex]?.find(slot => slot.time === slotTime);
+      
+      if (!selectedSlot) {
+        toast.error('Créneau non valide');
+        return;
+      }
+      
+      const { data } = await axios.post(
+        backendUrl + '/api/user/book-appointment', 
+        { 
+          docId, 
+          slotDate: selectedSlot.slotDate, 
+          slotTime 
+        }, 
+        { 
+          headers: { token },
+          timeout: 10000
+        }
+      );
+      
+      if (data.success) {
+        toast.success(data.message);
+        getDoctorsData(); // Rafraîchir les données
+        
+        // Rediriger vers la page des rendez-vous après un délai
+        setTimeout(() => {
+          navigate('/my-appointments');
+        }, 2000);
+      } else {
+        toast.error(data.message);
+      }
+      
+    } catch (error) {
+      console.error('Erreur réservation:', error);
+      
+      if (error.code === 'ECONNABORTED') {
+        toast.error('Délai d\'attente dépassé. Veuillez réessayer.');
+      } else if (error.response?.status === 429) {
+        toast.error('Trop de tentatives. Attendez quelques minutes.');
+      } else {
+        toast.error('Erreur lors de la réservation. Veuillez réessayer.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Sélectionner une date
+  const handleDateSelection = (index) => {
+    setSlotIndex(index);
+    setSlotTime(''); // Réinitialiser le créneau sélectionné
+    
+    if (docSlots[index] && docSlots[index].length > 0) {
+      const date = docSlots[index][0].datetime;
+      setSelectedDate(date.toLocaleDateString('fr-FR'));
+    }
+  };
+  
+  // Effects
+  useEffect(() => {
+    fetchDocInfo();
+  }, [doctors, docId]);
+  
+  useEffect(() => {
+    if (docInfo) {
+      getAvailableSlots();
+    }
+  }, [docInfo]);
+  
+  // Rendu conditionnel si pas de données
+  if (!docInfo) {
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  
+  return (
+    <div className="max-w-6xl mx-auto p-4">
+      {/* Informations du service */}
+      <div className="flex flex-col sm:flex-row gap-4 mb-8">
+        <div className="flex-shrink-0">
+          <img 
+            className="bg-primary w-full sm:max-w-72 rounded-lg object-cover h-72 sm:h-auto" 
+            src={docInfo.image} 
+            alt={docInfo.name}
+            onError={(e) => {
+              e.target.src = '/default-service.png';
+            }}
+          />
+        </div>
+        
+        <div className="flex-1 border border-gray-300 rounded-lg p-6 bg-white">
+          <div className="flex items-center gap-2 mb-3">
+            <h1 className="text-2xl font-bold text-gray-900">{docInfo.name}</h1>
+            <div className={`px-2 py-1 rounded-full text-xs ${docInfo.available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              {docInfo.available ? 'Disponible' : 'Indisponible'}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 text-sm text-gray-600 mb-4">
+            <span className="font-medium">{docInfo.degree || 'Service'}</span>
+            <span>•</span>
+            <span>{docInfo.speciality}</span>
+            {docInfo.experience && (
+              <>
+                <span>•</span>
+                <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                  {docInfo.experience}
+                </span>
+              </>
+            )}
+          </div>
+          
+          <div className="mb-4">
+            <h3 className="font-semibold text-gray-900 mb-2">À propos</h3>
+            <p className="text-sm text-gray-700 leading-relaxed">
+              {docInfo.about || 'Service municipal de qualité pour tous les citoyens d\'Azrou.'}
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-4 text-sm">
+            {docInfo.fees && (
+              <div>
+                <span className="text-gray-600">Frais: </span>
+                <span className="font-semibold text-green-600">
+                  {currencySymbol}{docInfo.fees}
+                </span>
+              </div>
+            )}
+            {docInfo.address && (
+              <div>
+                <span className="text-gray-600">Localisation: </span>
+                <span className="font-medium">{docInfo.address}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      {/* Sélection des créneaux */}
+      <div className="bg-white rounded-lg border border-gray-300 p-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">
+          Sélectionner un créneau
+        </h2>
+        
+        {docSlots.length > 0 ? (
+          <>
+            {/* Sélection de la date */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-700 mb-3">
+                Choisir une date
+              </h3>
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {docSlots.map((daySlots, index) => {
+                  const day = daySlots[0]?.datetime;
+                  if (!day) return null;
+                  
+                  return (
+                    <button
+                      key={index}
+                      onClick={() => handleDateSelection(index)}
+                      className={`flex flex-col items-center min-w-[60px] p-3 rounded-lg border transition-all ${
+                        slotIndex === index 
+                          ? 'bg-primary text-white border-primary' 
+                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-primary'
+                      }`}
+                    >
+                      <span className="text-xs font-medium">
+                        {daysOfWeek[day.getDay()]}
+                      </span>
+                      <span className="text-lg font-bold">
+                        {day.getDate()}
+                      </span>
+                      <span className="text-xs">
+                        {day.toLocaleDateString('fr-FR', { month: 'short' })}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            {/* Sélection de l'heure */}
+            {docSlots[slotIndex] && docSlots[slotIndex].length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-sm font-medium text-gray-700 mb-3">
+                  Choisir un horaire {selectedDate && `pour le ${selectedDate}`}
+                </h3>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                  {docSlots[slotIndex].map((slot, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setSlotTime(slot.time)}
+                      className={`p-2 rounded-lg text-sm font-medium border transition-all ${
+                        slot.time === slotTime
+                          ? 'bg-primary text-white border-primary'
+                          : 'bg-gray-50 text-gray-700 border-gray-200 hover:border-primary hover:bg-primary hover:text-white'
+                      }`}
+                    >
+                      {slot.time}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {/* Bouton de réservation */}
+            <div className="flex justify-center">
+              <button
+                onClick={bookAppointment}
+                disabled={!slotTime || loading}
+                className={`px-8 py-3 rounded-lg font-medium transition-all ${
+                  !slotTime || loading
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-primary text-white hover:bg-primary/90'
+                }`}
+              >
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Réservation en cours...
+                  </div>
+                ) : (
+                  'Réserver ce créneau'
+                )}
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="text-center py-8">
+            <div className="text-gray-500 mb-2">
+              Aucun créneau disponible pour le moment
+            </div>
+            <button
+              onClick={getAvailableSlots}
+              className="text-primary hover:underline text-sm"
+            >
+              Actualiser les créneaux
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default AppointmentForm;
+\end{lstlisting}
+
+\section{Service de notifications email}
+
+\begin{lstlisting}[language=JavaScript, caption=emailService.js - Service complet de notifications]
+import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+// Configuration du transporteur email
+const createTransporter = () => {
+  return nodemailer.createTransporter({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASSWORD
+    },
+    tls: {
+      rejectUnauthorized: false
+    }
+  });
+};
+
+// Template HTML pour les emails
+const getEmailTemplate = (type, data) => {
+  const baseStyle = `
+    <style>
+      body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+      .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+      .header { background: #3B82F6; color: white; padding: 20px; text-align: center; }
+      .content { padding: 20px; background: #f9f9f9; }
+      .appointment-details { background: white; padding: 15px; border-radius: 5px; margin: 20px 0; }
+      .footer { background: #6B7280; color: white; padding: 15px; text-align: center; font-size: 12px; }
+      .btn { background: #3B82F6; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block; }
+    </style>
+  `;
+
+  switch (type) {
+    case 'confirmation':
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Confirmation de rendez-vous</title>
+          ${baseStyle}
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Commune d'Azrou</h1>
+              <h2>Confirmation de rendez-vous</h2>
+            </div>
+            <div class="content">
+              <p>Bonjour <strong>${data.userData.name}</strong>,</p>
+              <p>Votre rendez-vous a été confirmé avec succès.</p>
+              
+              <div class="appointment-details">
+                <h3>Détails du rendez-vous :</h3>
+                <ul>
+                  <li><strong>Service :</strong> ${data.docData.name}</li>
+                  <li><strong>Département :</strong> ${data.docData.department}</li>
+                  <li><strong>Date :</strong> ${data.slotDate.replace(/_/g, '/')}</li>
+                  <li><strong>Heure :</strong> ${data.slotTime}</li>
+                  ${data.amount > 0 ? `<li><strong>Frais :</strong> ${data.amount} MAD</li>` : ''}
+                </ul>
+              </div>
+              
+              <p><strong>Que faire maintenant ?</strong></p>
+              <ul>
+                <li>Notez cette date dans votre agenda</li>
+                <li>Préparez les documents nécessaires</li>
+                <li>Arrivez 10 minutes avant l'heure prévue</li>
+                <li>Présentez-vous à l'accueil avec une pièce d'identité</li>
+              </ul>
+              
+              <p><strong>Besoin d'annuler ou reporter ?</strong></p>
+              <p>Vous pouvez gérer votre rendez-vous directement sur notre site web ou nous contacter.</p>
+              
+              <div style="text-align: center; margin: 20px 0;">
+                <a href="${process.env.FRONTEND_URL}/my-appointments" class="btn">
+                  Gérer mes rendez-vous
+                </a>
+              </div>
+            </div>
+            <div class="footer">
+              <p>Commune d'Azrou - Service numérique aux citoyens</p>
+              <p>Pour toute question : contact@azrou.ma | +212 535-123-000</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      
+    case 'cancellation':
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Annulation de rendez-vous</title>
+          ${baseStyle}
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Commune d'Azrou</h1>
+              <h2>Annulation de rendez-vous</h2>
+            </div>
+            <div class="content">
+              <p>Bonjour <strong>${data.userData.name}</strong>,</p>
+              <p>Votre rendez-vous a été annulé avec succès.</p>
+              
+              <div class="appointment-details">
+                <h3>Rendez-vous annulé :</h3>
+                <ul>
+                  <li><strong>Service :</strong> ${data.docData.name}</li>
+                  <li><strong>Date :</strong> ${data.slotDate.replace(/_/g, '/')}</li>
+                  <li><strong>Heure :</strong> ${data.slotTime}</li>
+                </ul>
+              </div>
+              
+              <p>Si vous souhaitez reprendre rendez-vous, vous pouvez le faire à tout moment sur notre site web.</p>
+              
+              <div style="text-align: center; margin: 20px 0;">
+                <a href="${process.env.FRONTEND_URL}/services" class="btn">
+                  Prendre un nouveau rendez-vous
+                </a>
+              </div>
+            </div>
+            <div class="footer">
+              <p>Commune d'Azrou - Service numérique aux citoyens</p>
+              <p>Pour toute question : contact@azrou.ma | +212 535-123-000</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      
+    case 'reminder':
+      return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Rappel de rendez-vous</title>
+          ${baseStyle}
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Commune d'Azrou</h1>
+              <h2>Rappel de rendez-vous</h2>
+            </div>
+            <div class="content">
+              <p>Bonjour <strong>${data.userData.name}</strong>,</p>
+              <p>Ceci est un rappel pour votre rendez-vous prévu <strong>demain</strong>.</p>
+              
+              <div class="appointment-details">
+                <h3>Détails du rendez-vous :</h3>
+                <ul>
+                  <li><strong>Service :</strong> ${data.docData.name}</li>
+                  <li><strong>Date :</strong> ${data.slotDate.replace(/_/g, '/')}</li>
+                  <li><strong>Heure :</strong> ${data.slotTime}</li>
+                </ul>
+              </div>
+              
+              <p><strong>Conseils pour votre visite :</strong></p>
+              <ul>
+                <li>Arrivez 10 minutes avant l'heure</li>
+                <li>Munissez-vous de votre pièce d'identité</li>
+                <li>Préparez les documents demandés</li>
+                <li>En cas d'empêchement, annulez votre rendez-vous</li>
+              </ul>
+            </div>
+            <div class="footer">
+              <p>Commune d'Azrou - Service numérique aux citoyens</p>
+              <p>Pour toute question : contact@azrou.ma | +212 535-123-000</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+      
+    default:
+      return '';
+  }
+};
+
+// Envoyer email de confirmation
+export const sendConfirmationEmail = async (userEmail, appointmentData) => {
+  try {
+    const transporter = createTransporter();
+    
+    const mailOptions = {
+      from: `"Commune d'Azrou" <${process.env.EMAIL_USER}>`,
+      to: userEmail,
+      subject: 'Confirmation de votre rendez-vous - Commune d\'Azrou',
+      html: getEmailTemplate('confirmation', appointmentData)
+    };
+    
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email de confirmation envoyé:', result.messageId);
+    return result;
+    
+  } catch (error) {
+    console.error('Erreur envoi email confirmation:', error);
+    throw error;
+  }
+};
+
+// Envoyer email d'annulation
+export const sendCancellationEmail = async (userEmail, appointmentData) => {
+  try {
+    const transporter = createTransporter();
+    
+    const mailOptions = {
+      from: `"Commune d'Azrou" <${process.env.EMAIL_USER}>`,
+      to: userEmail,
+      subject: 'Annulation de votre rendez-vous - Commune d\'Azrou',
+      html: getEmailTemplate('cancellation', appointmentData)
+    };
+    
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email d\'annulation envoyé:', result.messageId);
+    return result;
+    
+  } catch (error) {
+    console.error('Erreur envoi email annulation:', error);
+    throw error;
+  }
+};
+
+// Envoyer email de rappel
+export const sendReminderEmail = async (userEmail, appointmentData) => {
+  try {
+    const transporter = createTransporter();
+    
+    const mailOptions = {
+      from: `"Commune d'Azrou" <${process.env.EMAIL_USER}>`,
+      to: userEmail,
+      subject: 'Rappel : Votre rendez-vous de demain - Commune d\'Azrou',
+      html: getEmailTemplate('reminder', appointmentData)
+    };
+    
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Email de rappel envoyé:', result.messageId);
+    return result;
+    
+  } catch (error) {
+    console.error('Erreur envoi email rappel:', error);
+    throw error;
+  }
+};
+
+// Job automatique pour les rappels (à exécuter quotidiennement)
+export const sendDailyReminders = async () => {
+  try {
+    // Calculer la date de demain
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const day = tomorrow.getDate();
+    const month = tomorrow.getMonth() + 1;
+    const year = tomorrow.getFullYear();
+    const tomorrowSlotDate = day + "_" + month + "_" + year;
+    
+    // Trouver tous les rendez-vous de demain
+    const tomorrowAppointments = await appointmentModel.find({
+      slotDate: tomorrowSlotDate,
+      cancelled: false,
+      isCompleted: false
+    });
+    
+    console.log(`${tomorrowAppointments.length} rappels à envoyer pour ${tomorrowSlotDate}`);
+    
+    // Envoyer les rappels
+    for (const appointment of tomorrowAppointments) {
+      try {
+        await sendReminderEmail(appointment.userData.email, appointment);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Délai entre envois
+      } catch (error) {
+        console.error(`Erreur rappel pour appointment ${appointment._id}:`, error);
+      }
+    }
+    
+    console.log('Rappels quotidiens envoyés avec succès');
+    
+  } catch (error) {
+    console.error('Erreur envoi rappels quotidiens:', error);
+  }
+};
+\end{lstlisting}
+
+Ce code source présente les éléments techniques clés de notre application, notamment :
+
+\begin{itemize}
+    \item La structure complète des modèles de données MongoDB
+    \item Les contrôleurs backend avec gestion d'erreurs robuste
+    \item Les composants React avec validation et gestion d'état
+    \item Le service de notifications email avec templates HTML
+\end{itemize}
+
+Ces extraits illustrent les bonnes pratiques adoptées en termes de sécurité, validation des données, gestion d'erreurs et expérience utilisateur.

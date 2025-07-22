@@ -1,0 +1,139 @@
+% Main document for PFE Report
+\documentclass[12pt,a4paper]{report}
+
+% Encoding and language
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french,english]{babel}
+
+% Page layout
+\usepackage[left=3cm,right=2.5cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% Fonts and typography
+\usepackage{times}
+\usepackage{microtype}
+
+% Graphics and colors
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+\usepackage{subcaption}
+
+% Tables
+\usepackage{array}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{longtable}
+
+% Math
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+
+% Lists
+\usepackage{enumitem}
+
+% Headers and footers
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[LE,RO]{\thepage}
+\fancyhead[RE]{\leftmark}
+\fancyhead[LO]{\rightmark}
+
+% Bibliography
+\usepackage[style=numeric,backend=biber]{biblatex}
+\addbibresource{references.bib}
+
+% Links and references
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,      
+    urlcolor=cyan,
+    pdftitle={Mémoire PFE},
+    pdfauthor={Your Name},
+}
+
+% Code listings
+\usepackage{listings}
+\usepackage{listingsutf8}
+\lstset{
+    basicstyle=\ttfamily\footnotesize,
+    breaklines=true,
+    frame=single,
+    language=Python,
+    showstringspaces=false,
+    commentstyle=\color{gray},
+    keywordstyle=\color{blue},
+    stringstyle=\color{red}
+}
+
+% Appendix
+\usepackage[toc,page]{appendix}
+
+% Custom commands
+\newcommand{\university}{Université Sidi Mohamed Ben Abdellah}
+\newcommand{\faculty}{Faculté des Sciences et Techniques}
+\newcommand{\department}{Département d'Informatique}
+\newcommand{\reporttitle}{Développement d'une Application de Gestion des Rendez-vous Municipaux}
+\newcommand{\reportsubtitle}{Cas d'étude: Commune d'Azrou}
+\newcommand{\studentname}{Votre Nom}
+\newcommand{\studentid}{CNE: XXXXXXXXX}
+\newcommand{\supervisor}{Pr. Nom du Superviseur}
+\newcommand{\company}{Commune d'Azrou}
+\newcommand{\academicyear}{2024-2025}
+
+\begin{document}
+
+% Title page
+\input{chapters/title_page}
+
+% Front matter
+\frontmatter
+
+% Dedication (optional)
+\input{chapters/dedication}
+
+% Acknowledgments
+\input{chapters/acknowledgments}
+
+% Abstract in French
+\input{chapters/resume}
+
+% Abstract in English  
+\input{chapters/abstract}
+
+% Table of contents
+\tableofcontents
+\listoffigures
+\listoftables
+
+% Main content
+\mainmatter
+
+% Chapters
+\input{chapters/introduction}
+\input{chapters/chapter1_context}
+\input{chapters/chapter2_analysis}
+\input{chapters/chapter3_conception}
+\input{chapters/chapter4_implementation}
+\input{chapters/chapter5_testing}
+\input{chapters/conclusion}
+
+% Back matter
+\backmatter
+
+% Bibliography
+\printbibliography[heading=bibintoc]
+
+% Appendices
+\begin{appendices}
+\input{chapters/appendix_a}
+\input{chapters/appendix_b}
+\end{appendices}
+
+\end{document}

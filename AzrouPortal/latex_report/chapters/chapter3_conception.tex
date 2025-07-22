@@ -1,0 +1,319 @@
+\chapter{Conception de la solution}
+
+\section{Introduction}
+
+Ce chapitre présente la conception détaillée de notre solution de gestion des rendez-vous municipaux. Nous y abordons l'architecture globale du système, la modélisation des données, la conception des interfaces utilisateur, et les aspects sécuritaires.
+
+\section{Architecture générale du système}
+
+\subsection{Choix architectural}
+
+Notre solution adopte une architecture en 3 tiers (3-tier architecture) qui sépare clairement :
+\begin{itemize}
+    \item \textbf{Couche de présentation} : Interface utilisateur (frontend)
+    \item \textbf{Couche métier} : Logique applicative (backend)
+    \item \textbf{Couche de données} : Base de données
+\end{itemize}
+
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=0.8\textwidth]{images/system_architecture.png}
+    \caption{Architecture générale du système}
+    \label{fig:system_architecture}
+\end{figure}
+
+\subsection{Technologies retenues}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|p{6cm}|}
+\hline
+\textbf{Couche} & \textbf{Technologie} & \textbf{Justification} \\
+\hline
+Frontend & React.js & Composants réutilisables, écosystème riche \\
+\hline
+Backend & Node.js + Express & Performance, JavaScript full-stack \\
+\hline
+Base de données & MongoDB & Flexibilité, scalabilité \\
+\hline
+Authentification & JWT & Stateless, sécurisé \\
+\hline
+Notifications & Nodemailer & Intégration simple avec Node.js \\
+\hline
+Déploiement & Vercel / Heroku & Déploiement simplifié \\
+\hline
+\end{tabular}
+\caption{Technologies utilisées par couche}
+\label{tab:technologies}
+\end{table}
+
+\section{Modélisation des données}
+
+\subsection{Modèle conceptuel de données}
+
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=\textwidth]{images/data_model.png}
+    \caption{Diagramme de classes du modèle de données}
+    \label{fig:data_model}
+\end{figure}
+
+\subsection{Description des entités principales}
+
+\subsubsection{Entité User}
+\begin{itemize}
+    \item \textbf{Attributs} : id, nom, prénom, email, téléphone, adresse, mot de passe, rôle
+    \item \textbf{Rôles} : citoyen, agent, superviseur, administrateur
+    \item \textbf{Relations} : Un utilisateur peut avoir plusieurs rendez-vous
+\end{itemize}
+
+\subsubsection{Entité Department}
+\begin{itemize}
+    \item \textbf{Attributs} : id, nom, description, services, contact, horaires
+    \item \textbf{Relations} : Un département peut avoir plusieurs agents et services
+\end{itemize}
+
+\subsubsection{Entité Appointment}
+\begin{itemize}
+    \item \textbf{Attributs} : id, date, heure, statut, motif, notes
+    \item \textbf{Relations} : Associé à un utilisateur et un service
+\end{itemize}
+
+\subsubsection{Entité Service}
+\begin{itemize}
+    \item \textbf{Attributs} : id, nom, description, durée, département
+    \item \textbf{Relations} : Appartient à un département
+\end{itemize}
+
+\subsection{Schéma de base de données MongoDB}
+
+\begin{lstlisting}[language=JavaScript, caption=Schéma User]
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  phone: String,
+  address: String,
+  role: { 
+    type: String, 
+    enum: ['citizen', 'agent', 'supervisor', 'admin'],
+    default: 'citizen' 
+  },
+  isVerified: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now }
+});
+\end{lstlisting}
+
+\section{Conception des interfaces utilisateur}
+
+\subsection{Principes de design}
+
+Notre conception d'interface s'appuie sur les principes suivants :
+\begin{itemize}
+    \item \textbf{Simplicité} : Interface épurée et intuitive
+    \item \textbf{Accessibilité} : Respect des standards WCAG
+    \item \textbf{Responsivité} : Adaptation à tous les écrans
+    \item \textbf{Cohérence} : Design system uniforme
+\end{itemize}
+
+\subsection{Wireframes et maquettes}
+
+\subsubsection{Interface citoyenne}
+
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=0.7\textwidth]{images/citizen_wireframe.png}
+    \caption{Wireframe de l'interface citoyenne}
+    \label{fig:citizen_wireframe}
+\end{figure}
+
+Les principales pages pour les citoyens :
+\begin{itemize}
+    \item Page d'accueil avec présentation des services
+    \item Page de connexion/inscription
+    \item Page de prise de rendez-vous
+    \item Page de gestion des rendez-vous
+    \item Page de profil utilisateur
+\end{itemize}
+
+\subsubsection{Interface administrative}
+
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=0.7\textwidth]{images/admin_wireframe.png}
+    \caption{Wireframe de l'interface administrative}
+    \label{fig:admin_wireframe}
+\end{figure}
+
+Les principales pages pour les administrateurs :
+\begin{itemize}
+    \item Tableau de bord avec statistiques
+    \item Gestion des utilisateurs
+    \item Gestion des services et départements
+    \item Gestion des rendez-vous
+    \item Rapports et analyses
+\end{itemize}
+
+\subsection{Charte graphique}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|l|}
+\hline
+\textbf{Élément} & \textbf{Spécification} & \textbf{Usage} \\
+\hline
+Couleur primaire & \#3B82F6 (Bleu) & Boutons principaux, liens \\
+\hline
+Couleur secondaire & \#10B981 (Vert) & Statuts positifs, succès \\
+\hline
+Couleur d'alerte & \#EF4444 (Rouge) & Erreurs, suppressions \\
+\hline
+Police principale & Inter & Textes généraux \\
+\hline
+Police titres & Poppins & Titres et en-têtes \\
+\hline
+\end{tabular}
+\caption{Éléments de la charte graphique}
+\label{tab:style_guide}
+\end{table}
+
+\section{Architecture logicielle détaillée}
+
+\subsection{Architecture frontend (React.js)}
+
+\subsubsection{Structure des composants}
+
+\begin{lstlisting}[caption=Structure des dossiers frontend]
+src/
+├── components/          # Composants réutilisables
+│   ├── common/         # Composants génériques
+│   ├── forms/          # Composants de formulaires
+│   └── layout/         # Composants de mise en page
+├── pages/              # Pages de l'application
+├── context/            # Context API pour l'état global
+├── hooks/              # Hooks personnalisés
+├── services/           # Services API
+├── utils/              # Utilitaires
+└── assets/             # Ressources statiques
+\end{lstlisting}
+
+\subsubsection{Gestion d'état}
+
+Nous utilisons React Context API pour la gestion d'état global :
+\begin{itemize}
+    \item \textbf{AuthContext} : Gestion de l'authentification
+    \item \textbf{AppContext} : État général de l'application
+    \item \textbf{AdminContext} : État spécifique à l'administration
+\end{itemize}
+
+\subsection{Architecture backend (Node.js + Express)}
+
+\subsubsection{Structure MVC}
+
+\begin{lstlisting}[caption=Structure des dossiers backend]
+backend/
+├── controllers/        # Contrôleurs métier
+├── models/            # Modèles de données
+├── routes/            # Définition des routes
+├── middleware/        # Middlewares d'authentification
+├── services/          # Services métier
+├── utils/             # Utilitaires
+└── config/            # Configuration
+\end{lstlisting}
+
+\subsubsection{API RESTful}
+
+Notre API suit les principes REST :
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|p{5cm}|}
+\hline
+\textbf{Endpoint} & \textbf{Méthode} & \textbf{Description} \\
+\hline
+/api/users & GET & Récupérer la liste des utilisateurs \\
+\hline
+/api/users & POST & Créer un nouvel utilisateur \\
+\hline
+/api/appointments & GET & Récupérer les rendez-vous \\
+\hline
+/api/appointments & POST & Créer un rendez-vous \\
+\hline
+/api/departments & GET & Récupérer les départements \\
+\hline
+\end{tabular}
+\caption{Principaux endpoints de l'API}
+\label{tab:api_endpoints}
+\end{table}
+
+\section{Sécurité et authentification}
+
+\subsection{Stratégie de sécurité}
+
+Notre approche sécuritaire couvre plusieurs aspects :
+
+\subsubsection{Authentification}
+\begin{itemize}
+    \item Utilisation de JWT (JSON Web Tokens)
+    \item Hachage des mots de passe avec bcrypt
+    \item Expiration automatique des sessions
+    \item Système de refresh tokens
+\end{itemize}
+
+\subsubsection{Autorisation}
+\begin{itemize}
+    \item Système de rôles (RBAC - Role-Based Access Control)
+    \item Middleware de vérification des permissions
+    \item Contrôle d'accès granulaire aux ressources
+\end{itemize}
+
+\subsubsection{Protection des données}
+\begin{itemize}
+    \item Chiffrement HTTPS en production
+    \item Validation et sanitisation des entrées
+    \item Protection contre les injections SQL/NoSQL
+    \item Limitation du taux de requêtes (rate limiting)
+\end{itemize}
+
+\subsection{Conformité RGPD}
+
+\begin{itemize}
+    \item Consentement explicite pour la collecte de données
+    \item Droit à l'effacement des données
+    \item Portabilité des données
+    \item Notification des violations de données
+    \item Politique de confidentialité détaillée
+\end{itemize}
+
+\section{Diagrammes UML}
+
+\subsection{Diagramme de cas d'usage}
+
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=\textwidth]{images/use_case_diagram.png}
+    \caption{Diagramme de cas d'usage du système}
+    \label{fig:use_case}
+\end{figure}
+
+\subsection{Diagramme de séquence - Prise de rendez-vous}
+
+\begin{figure}[h]
+    \centering
+    % \includegraphics[width=\textwidth]{images/sequence_appointment.png}
+    \caption{Diagramme de séquence pour la prise de rendez-vous}
+    \label{fig:sequence_appointment}
+\end{figure}
+
+\section{Conclusion}
+
+Cette phase de conception nous a permis de définir une architecture robuste et scalable pour notre système de gestion des rendez-vous municipaux. Les choix technologiques effectués garantissent :
+
+\begin{itemize}
+    \item Une maintenabilité élevée du code
+    \item Une expérience utilisateur optimale
+    \item Une sécurité renforcée des données
+    \item Une capacité d'évolution du système
+\end{itemize}
+
+Le chapitre suivant détaille la phase d'implémentation de cette conception.

@@ -1,0 +1,924 @@
+\chapter{Annexe B : Documentation technique et déploiement}
+
+Cette annexe présente la documentation technique complète pour l'installation, le déploiement et la maintenance de l'application.
+
+\section{Guide d'installation}
+
+\subsection{Prérequis système}
+
+\subsubsection{Environnement de développement}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|l|l|p{6cm}|}
+\hline
+\textbf{Composant} & \textbf{Version} & \textbf{Notes} \\
+\hline
+Node.js & 18.x ou supérieur & Runtime JavaScript \\
+\hline
+npm & 8.x ou supérieur & Gestionnaire de paquets \\
+\hline
+MongoDB & 6.x ou supérieur & Base de données \\
+\hline
+Git & 2.x ou supérieur & Contrôle de version \\
+\hline
+\end{tabular}
+\caption{Prérequis logiciels}
+\end{table}
+
+\subsubsection{Configuration serveur de production}
+
+\begin{itemize}
+    \item \textbf{CPU} : 2 cœurs minimum, 4 cœurs recommandés
+    \item \textbf{RAM} : 4 GB minimum, 8 GB recommandés
+    \item \textbf{Stockage} : 50 GB SSD minimum
+    \item \textbf{Bande passante} : 100 Mbps minimum
+    \item \textbf{OS} : Ubuntu 20.04 LTS ou CentOS 8
+\end{itemize}
+
+\subsection{Installation étape par étape}
+
+\subsubsection{1. Clonage du repository}
+
+\begin{lstlisting}[language=bash, caption=Clonage et configuration initiale]
+# Cloner le repository
+git clone https://github.com/commune-azrou/appointment-system.git
+cd appointment-system
+
+# Vérifier la structure
+ls -la
+# Dossiers attendus: frontend/, backend/, admin/, docs/
+\end{lstlisting}
+
+\subsubsection{2. Configuration du backend}
+
+\begin{lstlisting}[language=bash, caption=Installation et configuration backend]
+# Aller dans le dossier backend
+cd backend
+
+# Installer les dépendances
+npm install
+
+# Copier le fichier d'environnement
+cp .env.example .env
+
+# Éditer les variables d'environnement
+nano .env
+\end{lstlisting}
+
+\textbf{Fichier .env pour le backend :}
+
+\begin{lstlisting}[caption=Configuration backend .env]
+# Serveur
+PORT=4000
+NODE_ENV=production
+
+# Base de données MongoDB
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/azrou-municipality
+
+# JWT Secrets
+JWT_SECRET=your-super-secure-jwt-secret-key-here
+ADMIN_JWT_SECRET=your-super-secure-admin-jwt-secret-key-here
+DOCTOR_JWT_SECRET=your-super-secure-doctor-jwt-secret-key-here
+
+# Email Configuration (Gmail)
+EMAIL_USER=contact@azrou.ma
+EMAIL_PASSWORD=your-app-specific-password
+
+# Cloudinary (pour les images)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+# URLs Frontend
+FRONTEND_URL=https://azrou-appointments.vercel.app
+ADMIN_URL=https://azrou-admin.vercel.app
+
+# Sécurité
+CORS_ORIGIN=https://azrou-appointments.vercel.app,https://azrou-admin.vercel.app
+SESSION_SECRET=your-session-secret
+
+# Rate Limiting
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Logging
+LOG_LEVEL=info
+LOG_FILE_PATH=./logs/app.log
+\end{lstlisting}
+
+\subsubsection{3. Configuration du frontend}
+
+\begin{lstlisting}[language=bash, caption=Installation et configuration frontend]
+# Aller dans le dossier frontend
+cd ../frontend
+
+# Installer les dépendances
+npm install
+
+# Copier le fichier d'environnement
+cp .env.example .env.local
+
+# Éditer les variables d'environnement
+nano .env.local
+\end{lstlisting}
+
+\textbf{Fichier .env.local pour le frontend :}
+
+\begin{lstlisting}[caption=Configuration frontend .env.local]
+# API Backend URL
+VITE_BACKEND_URL=https://azrou-api.herokuapp.com
+
+# Application URLs
+VITE_FRONTEND_URL=https://azrou-appointments.vercel.app
+VITE_ADMIN_URL=https://azrou-admin.vercel.app
+
+# Contact Information
+VITE_CONTACT_EMAIL=contact@azrou.ma
+VITE_CONTACT_PHONE=+212535123000
+
+# Google Analytics (optionnel)
+VITE_GA_TRACKING_ID=GA_TRACKING_ID
+
+# Features Flags
+VITE_ENABLE_NOTIFICATIONS=true
+VITE_ENABLE_SMS=false
+VITE_ENABLE_PAYMENT=false
+
+# Maps API (optionnel)
+VITE_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
+\end{lstlisting}
+
+\subsubsection{4. Configuration de l'interface admin}
+
+\begin{lstlisting}[language=bash, caption=Installation et configuration admin]
+# Aller dans le dossier admin
+cd ../admin
+
+# Installer les dépendances
+npm install
+
+# Copier et configurer l'environnement
+cp .env.example .env.local
+nano .env.local
+\end{lstlisting}
+
+\section{Scripts de déploiement}
+
+\subsection{Script de déploiement automatique}
+
+\begin{lstlisting}[language=bash, caption=deploy.sh - Script de déploiement complet]
+#!/bin/bash
+
+# Script de déploiement pour l'application Azrou Appointments
+# Usage: ./deploy.sh [environment]
+# Environments: development, staging, production
+
+set -e
+
+# Variables
+ENVIRONMENT=${1:-production}
+PROJECT_DIR="/var/www/azrou-appointments"
+BACKUP_DIR="/var/backups/azrou-appointments"
+LOG_FILE="/var/log/azrou-deployment.log"
+
+echo "=== Déploiement Azrou Appointments - $(date) ===" | tee -a $LOG_FILE
+
+# Fonction de logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a $LOG_FILE
+}
+
+# Fonction de sauvegarde
+backup_current() {
+    log "Création de la sauvegarde..."
+    
+    if [ -d "$PROJECT_DIR" ]; then
+        BACKUP_NAME="backup-$(date +%Y%m%d-%H%M%S)"
+        mkdir -p $BACKUP_DIR
+        tar -czf "$BACKUP_DIR/$BACKUP_NAME.tar.gz" -C "$PROJECT_DIR" .
+        log "Sauvegarde créée: $BACKUP_DIR/$BACKUP_NAME.tar.gz"
+    fi
+}
+
+# Fonction de restauration en cas d'erreur
+rollback() {
+    log "ERREUR: Rollback en cours..."
+    
+    LATEST_BACKUP=$(ls -t $BACKUP_DIR/*.tar.gz | head -n1)
+    if [ -n "$LATEST_BACKUP" ]; then
+        log "Restauration de $LATEST_BACKUP"
+        rm -rf $PROJECT_DIR/*
+        tar -xzf "$LATEST_BACKUP" -C "$PROJECT_DIR"
+        
+        # Redémarrer les services
+        pm2 restart azrou-backend
+        log "Rollback terminé"
+    else
+        log "Aucune sauvegarde disponible pour le rollback"
+    fi
+    
+    exit 1
+}
+
+# Configuration du trap pour rollback automatique
+trap rollback ERR
+
+# 1. Sauvegarde
+backup_current
+
+# 2. Mise à jour du code
+log "Mise à jour du code source..."
+cd $PROJECT_DIR
+git fetch origin
+git reset --hard origin/main
+
+# 3. Mise à jour des dépendances backend
+log "Mise à jour backend..."
+cd backend
+npm ci --production
+npm run build 2>/dev/null || true
+
+# 4. Migration de base de données si nécessaire
+log "Vérification des migrations..."
+if [ -f "migrations/migrate.js" ]; then
+    node migrations/migrate.js
+    log "Migrations appliquées"
+fi
+
+# 5. Build frontend
+log "Build frontend..."
+cd ../frontend
+npm ci
+npm run build
+
+# 6. Build admin
+log "Build admin..."
+cd ../admin
+npm ci
+npm run build
+
+# 7. Mise à jour des variables d'environnement
+log "Configuration des variables d'environnement..."
+if [ "$ENVIRONMENT" = "production" ]; then
+    cp /etc/azrou-appointments/backend.env backend/.env
+    cp /etc/azrou-appointments/frontend.env frontend/.env.local
+    cp /etc/azrou-appointments/admin.env admin/.env.local
+fi
+
+# 8. Tests de validation
+log "Exécution des tests..."
+cd ../backend
+npm run test:smoke || {
+    log "ERREUR: Les tests de validation ont échoué"
+    exit 1
+}
+
+# 9. Redémarrage des services
+log "Redémarrage des services..."
+pm2 reload azrou-backend --update-env
+pm2 save
+
+# 10. Health check
+log "Vérification de la santé du service..."
+sleep 10
+
+# Test de connectivité API
+if ! curl -f http://localhost:4000/api/health > /dev/null 2>&1; then
+    log "ERREUR: Le service backend ne répond pas"
+    exit 1
+fi
+
+# 11. Nettoyage
+log "Nettoyage..."
+# Supprimer les anciennes sauvegardes (garder les 5 dernières)
+cd $BACKUP_DIR
+ls -t *.tar.gz | tail -n +6 | xargs -r rm --
+
+# 12. Notifications
+log "Envoi des notifications..."
+if command -v mail &> /dev/null; then
+    echo "Déploiement réussi sur $ENVIRONMENT à $(date)" | \
+    mail -s "Azrou Appointments - Déploiement $ENVIRONMENT" admin@azrou.ma
+fi
+
+log "=== Déploiement terminé avec succès ==="
+
+# Désactiver le trap
+trap - ERR
+\end{lstlisting}
+
+\subsection{Configuration PM2 pour la production}
+
+\begin{lstlisting}[language=json, caption=ecosystem.config.js - Configuration PM2]
+module.exports = {
+  apps: [{
+    name: 'azrou-backend',
+    script: 'server.js',
+    cwd: './backend',
+    instances: 2,
+    exec_mode: 'cluster',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 4000
+    },
+    env_production: {
+      NODE_ENV: 'production',
+      PORT: 4000
+    },
+    // Logging
+    log_file: '/var/log/azrou-backend.log',
+    error_file: '/var/log/azrou-backend-error.log',
+    out_file: '/var/log/azrou-backend-out.log',
+    log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+    
+    // Monitoring
+    monitoring: true,
+    pmx: true,
+    
+    // Auto-restart configuration
+    max_memory_restart: '500M',
+    restart_delay: 5000,
+    max_restarts: 3,
+    min_uptime: '10s',
+    
+    // Health check
+    health_check_grace_period: 3000,
+    health_check_fatal_exceptions: true,
+    
+    // Advanced settings
+    node_args: '--max_old_space_size=1024',
+    source_map_support: true,
+    instance_var: 'INSTANCE_ID',
+    
+    // Watch & Ignore
+    watch: false,
+    ignore_watch: ['node_modules', 'logs', 'uploads'],
+    
+    // Graceful shutdown
+    kill_timeout: 5000,
+    listen_timeout: 8000
+  }]
+};
+\end{lstlisting}
+
+\section{Configuration Nginx}
+
+\subsection{Configuration reverse proxy}
+
+\begin{lstlisting}[caption=nginx.conf - Configuration Nginx complète]
+# Configuration Nginx pour Azrou Appointments
+
+upstream azrou_backend {
+    least_conn;
+    server 127.0.0.1:4000 max_fails=3 fail_timeout=30s;
+    server 127.0.0.1:4001 max_fails=3 fail_timeout=30s backup;
+}
+
+# Limitation du taux de requêtes
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+limit_req_zone $binary_remote_addr zone=login_limit:10m rate=5r/m;
+
+# Configuration SSL
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
+ssl_prefer_server_ciphers off;
+ssl_dhparam /etc/nginx/dhparam.pem;
+ssl_session_cache shared:SSL:1m;
+ssl_session_timeout 10m;
+
+# Serveur principal HTTPS
+server {
+    listen 443 ssl http2;
+    server_name api.azrou-appointments.ma;
+    
+    # Certificats SSL
+    ssl_certificate /etc/letsencrypt/live/azrou-appointments.ma/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/azrou-appointments.ma/privkey.pem;
+    
+    # Headers de sécurité
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+    
+    # Logging
+    access_log /var/log/nginx/azrou-api-access.log combined;
+    error_log /var/log/nginx/azrou-api-error.log warn;
+    
+    # Taille max des uploads
+    client_max_body_size 10M;
+    
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1000;
+    gzip_proxied any;
+    gzip_comp_level 6;
+    gzip_types
+        application/json
+        application/javascript
+        application/xml+rss
+        application/atom+xml
+        image/svg+xml
+        text/plain
+        text/css
+        text/xml
+        text/javascript;
+    
+    # API Routes
+    location /api/ {
+        # Rate limiting
+        limit_req zone=api_limit burst=20 nodelay;
+        
+        # Headers pour CORS
+        add_header Access-Control-Allow-Origin "https://azrou-appointments.ma, https://admin.azrou-appointments.ma";
+        add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS";
+        add_header Access-Control-Allow-Headers "Origin, X-Requested-With, Content-Type, Accept, Authorization, token, atoken, dtoken";
+        add_header Access-Control-Allow-Credentials true;
+        
+        # Gestion des requêtes OPTIONS
+        if ($request_method = 'OPTIONS') {
+            return 200;
+        }
+        
+        # Proxy vers le backend
+        proxy_pass http://azrou_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        
+        # Timeouts
+        proxy_connect_timeout 30s;
+        proxy_send_timeout 30s;
+        proxy_read_timeout 30s;
+    }
+    
+    # Routes spécifiques avec rate limiting renforcé
+    location ~ ^/api/(user|admin|doctor)/(login|register) {
+        limit_req zone=login_limit burst=5 nodelay;
+        
+        proxy_pass http://azrou_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    
+    # Health check
+    location /health {
+        access_log off;
+        proxy_pass http://azrou_backend/api/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+    
+    # Servir les fichiers statiques (uploads)
+    location /uploads/ {
+        alias /var/www/azrou-appointments/backend/uploads/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        add_header X-Content-Type-Options nosniff;
+        
+        # Sécurité: seulement les images
+        location ~* \.(jpg|jpeg|png|gif|webp)$ {
+            try_files $uri =404;
+        }
+        
+        # Bloquer les autres types de fichiers
+        location ~ {
+            return 403;
+        }
+    }
+}
+
+# Redirection HTTP vers HTTPS
+server {
+    listen 80;
+    server_name api.azrou-appointments.ma;
+    return 301 https://$server_name$request_uri;
+}
+
+# Configuration pour le frontend (si hébergé sur le même serveur)
+server {
+    listen 443 ssl http2;
+    server_name azrou-appointments.ma www.azrou-appointments.ma;
+    
+    ssl_certificate /etc/letsencrypt/live/azrou-appointments.ma/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/azrou-appointments.ma/privkey.pem;
+    
+    root /var/www/azrou-appointments/frontend/dist;
+    index index.html;
+    
+    # Headers de sécurité
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    
+    # Gestion des routes React (SPA)
+    location / {
+        try_files $uri $uri/ /index.html;
+        expires 1h;
+        add_header Cache-Control "public, must-revalidate";
+    }
+    
+    # Cache pour les assets
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+    
+    # Service Worker
+    location /sw.js {
+        expires -1;
+        add_header Cache-Control "no-cache, no-store, must-revalidate";
+    }
+}
+
+# Configuration pour l'interface admin
+server {
+    listen 443 ssl http2;
+    server_name admin.azrou-appointments.ma;
+    
+    ssl_certificate /etc/letsencrypt/live/azrou-appointments.ma/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/azrou-appointments.ma/privkey.pem;
+    
+    root /var/www/azrou-appointments/admin/dist;
+    index index.html;
+    
+    # Restriction d'accès par IP (bureau municipal)
+    # allow 192.168.1.0/24;
+    # deny all;
+    
+    # Authentification basique additionnelle
+    # auth_basic "Administration Azrou";
+    # auth_basic_user_file /etc/nginx/.htpasswd;
+    
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+\end{lstlisting}
+
+\section{Scripts de monitoring}
+
+\subsection{Script de monitoring système}
+
+\begin{lstlisting}[language=bash, caption=monitor.sh - Monitoring complet du système]
+#!/bin/bash
+
+# Script de monitoring pour Azrou Appointments
+# À exécuter via cron toutes les 5 minutes
+
+LOGFILE="/var/log/azrou-monitoring.log"
+ALERT_EMAIL="admin@azrou.ma"
+API_URL="http://localhost:4000"
+
+# Function de logging
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> $LOGFILE
+}
+
+# Function d'alerte
+send_alert() {
+    local subject="$1"
+    local message="$2"
+    
+    echo "$message" | mail -s "$subject" $ALERT_EMAIL
+    log "ALERT: $subject - $message"
+}
+
+# Vérification de l'API
+check_api() {
+    local response=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/api/health")
+    
+    if [ "$response" != "200" ]; then
+        send_alert "API Down" "L'API Azrou Appointments ne répond pas (HTTP $response)"
+        return 1
+    fi
+    
+    # Vérifier le temps de réponse
+    local response_time=$(curl -s -o /dev/null -w "%{time_total}" "$API_URL/api/health")
+    local threshold=3.0
+    
+    if (( $(echo "$response_time > $threshold" | bc -l) )); then
+        send_alert "API Slow" "Temps de réponse API élevé: ${response_time}s (seuil: ${threshold}s)"
+    fi
+    
+    log "API OK - Response time: ${response_time}s"
+    return 0
+}
+
+# Vérification de MongoDB
+check_mongodb() {
+    if ! systemctl is-active --quiet mongod; then
+        send_alert "MongoDB Down" "Le service MongoDB n'est pas actif"
+        return 1
+    fi
+    
+    # Test de connexion
+    if ! mongo --quiet --eval "db.runCommand('ping')" > /dev/null 2>&1; then
+        send_alert "MongoDB Connection" "Impossible de se connecter à MongoDB"
+        return 1
+    fi
+    
+    log "MongoDB OK"
+    return 0
+}
+
+# Vérification de Nginx
+check_nginx() {
+    if ! systemctl is-active --quiet nginx; then
+        send_alert "Nginx Down" "Le service Nginx n'est pas actif"
+        return 1
+    fi
+    
+    # Test de configuration
+    if ! nginx -t > /dev/null 2>&1; then
+        send_alert "Nginx Config" "Configuration Nginx invalide"
+        return 1
+    fi
+    
+    log "Nginx OK"
+    return 0
+}
+
+# Vérification PM2
+check_pm2() {
+    local status=$(pm2 jlist | jq -r '.[0].pm2_env.status' 2>/dev/null)
+    
+    if [ "$status" != "online" ]; then
+        send_alert "PM2 Process Down" "Le processus azrou-backend n'est pas en ligne (status: $status)"
+        
+        # Tentative de redémarrage automatique
+        log "Tentative de redémarrage PM2..."
+        pm2 restart azrou-backend
+        sleep 10
+        
+        # Vérifier à nouveau
+        status=$(pm2 jlist | jq -r '.[0].pm2_env.status' 2>/dev/null)
+        if [ "$status" != "online" ]; then
+            send_alert "PM2 Restart Failed" "Échec du redémarrage automatique PM2"
+            return 1
+        else
+            log "Redémarrage PM2 réussi"
+        fi
+    fi
+    
+    log "PM2 OK"
+    return 0
+}
+
+# Vérification de l'espace disque
+check_disk_space() {
+    local usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+    local threshold=85
+    
+    if [ "$usage" -gt "$threshold" ]; then
+        send_alert "Disk Space Warning" "Espace disque utilisé: ${usage}% (seuil: ${threshold}%)"
+    fi
+    
+    log "Disk usage: ${usage}%"
+}
+
+# Vérification de la mémoire
+check_memory() {
+    local usage=$(free | awk 'NR==2{printf "%.0f", $3*100/$2}')
+    local threshold=90
+    
+    if [ "$usage" -gt "$threshold" ]; then
+        send_alert "Memory Warning" "Utilisation mémoire: ${usage}% (seuil: ${threshold}%)"
+    fi
+    
+    log "Memory usage: ${usage}%"
+}
+
+# Vérification des certificats SSL
+check_ssl_certificates() {
+    local domain="azrou-appointments.ma"
+    local cert_file="/etc/letsencrypt/live/$domain/fullchain.pem"
+    
+    if [ -f "$cert_file" ]; then
+        local expiry_date=$(openssl x509 -enddate -noout -in "$cert_file" | cut -d= -f2)
+        local expiry_timestamp=$(date -d "$expiry_date" +%s)
+        local current_timestamp=$(date +%s)
+        local days_until_expiry=$(( (expiry_timestamp - current_timestamp) / 86400 ))
+        
+        if [ "$days_until_expiry" -lt 30 ]; then
+            send_alert "SSL Certificate Expiring" "Le certificat SSL expire dans $days_until_expiry jours"
+        fi
+        
+        log "SSL Certificate expires in $days_until_expiry days"
+    else
+        send_alert "SSL Certificate Missing" "Certificat SSL non trouvé: $cert_file"
+    fi
+}
+
+# Vérification des logs d'erreur
+check_error_logs() {
+    local error_count=$(grep -c "ERROR\|CRITICAL" /var/log/azrou-backend-error.log 2>/dev/null || echo 0)
+    local threshold=10
+    
+    if [ "$error_count" -gt "$threshold" ]; then
+        local recent_errors=$(tail -20 /var/log/azrou-backend-error.log)
+        send_alert "High Error Rate" "Nombre d'erreurs: $error_count (seuil: $threshold)\n\nErreurs récentes:\n$recent_errors"
+    fi
+    
+    log "Error count in logs: $error_count"
+}
+
+# Nettoyage des logs anciens
+cleanup_logs() {
+    find /var/log -name "*.log" -type f -mtime +30 -delete
+    find /var/log -name "*.log.*" -type f -mtime +7 -delete
+    log "Log cleanup completed"
+}
+
+# Sauvegarde automatique de la base de données
+backup_database() {
+    local backup_dir="/var/backups/mongodb"
+    local backup_file="azrou-db-$(date +%Y%m%d-%H%M%S).gz"
+    
+    mkdir -p "$backup_dir"
+    
+    if mongodump --db azrou-municipality --gzip --archive="$backup_dir/$backup_file" > /dev/null 2>&1; then
+        log "Database backup created: $backup_file"
+        
+        # Garder seulement les 7 dernières sauvegardes
+        cd "$backup_dir"
+        ls -t azrou-db-*.gz | tail -n +8 | xargs -r rm
+    else
+        send_alert "Backup Failed" "Échec de la sauvegarde de base de données"
+    fi
+}
+
+# Fonction principale
+main() {
+    log "=== Début du monitoring ==="
+    
+    # Vérifications système
+    check_api
+    check_mongodb
+    check_nginx
+    check_pm2
+    check_disk_space
+    check_memory
+    check_ssl_certificates
+    check_error_logs
+    
+    # Maintenance (une fois par jour à 2h du matin)
+    if [ "$(date +%H)" = "02" ]; then
+        cleanup_logs
+        backup_database
+    fi
+    
+    log "=== Fin du monitoring ==="
+}
+
+# Exécution
+main
+\end{lstlisting}
+
+\section{Configuration de sécurité}
+
+\subsection{Configuration firewall}
+
+\begin{lstlisting}[language=bash, caption=firewall-setup.sh - Configuration firewall UFW]
+#!/bin/bash
+
+# Configuration firewall pour serveur Azrou Appointments
+
+echo "Configuration du firewall UFW..."
+
+# Réinitialiser UFW
+ufw --force reset
+
+# Politique par défaut
+ufw default deny incoming
+ufw default allow outgoing
+
+# SSH (modifier le port si nécessaire)
+ufw allow 22/tcp comment 'SSH'
+
+# HTTP et HTTPS
+ufw allow 80/tcp comment 'HTTP'
+ufw allow 443/tcp comment 'HTTPS'
+
+# Accès local pour MongoDB (seulement depuis localhost)
+ufw allow from 127.0.0.1 to any port 27017 comment 'MongoDB localhost'
+
+# Rate limiting pour SSH
+ufw limit ssh comment 'SSH rate limiting'
+
+# Règles spécifiques pour les IPs du bureau municipal
+# Remplacer par les vraies IPs
+OFFICE_IPS=(
+    "192.168.1.100"
+    "192.168.1.101"
+    "41.248.XXX.XXX"
+)
+
+for ip in "${OFFICE_IPS[@]}"; do
+    ufw allow from "$ip" to any port 22 comment "Office SSH access"
+    ufw allow from "$ip" to any port 3000 comment "Office direct access"
+done
+
+# Bloquer les tentatives de brute force
+ufw limit 22/tcp
+ufw limit 80/tcp
+ufw limit 443/tcp
+
+# Logging
+ufw logging on
+
+# Activer UFW
+ufw --force enable
+
+# Afficher le statut
+ufw status verbose
+
+echo "Configuration firewall terminée"
+\end{lstlisting}
+
+\subsection{Configuration SSL/TLS avec Certbot}
+
+\begin{lstlisting}[language=bash, caption=ssl-setup.sh - Configuration SSL automatique]
+#!/bin/bash
+
+# Installation et configuration SSL avec Let's Encrypt
+
+echo "Installation de Certbot..."
+
+# Installation Certbot
+sudo apt update
+sudo apt install -y certbot python3-certbot-nginx
+
+# Domaines à sécuriser
+DOMAINS=(
+    "azrou-appointments.ma"
+    "www.azrou-appointments.ma"
+    "api.azrou-appointments.ma"
+    "admin.azrou-appointments.ma"
+)
+
+# Obtenir les certificats
+for domain in "${DOMAINS[@]}"; do
+    echo "Obtention du certificat pour $domain..."
+    
+    certbot certonly \
+        --nginx \
+        --non-interactive \
+        --agree-tos \
+        --email admin@azrou.ma \
+        --domains "$domain"
+done
+
+# Configuration du renouvellement automatique
+echo "Configuration du renouvellement automatique..."
+
+# Créer un script de renouvellement
+cat > /etc/cron.daily/certbot-renew << 'EOF'
+#!/bin/bash
+
+# Script de renouvellement automatique des certificats SSL
+
+# Renouveler les certificats
+/usr/bin/certbot renew --quiet
+
+# Recharger Nginx si des certificats ont été renouvelés
+if [ $? -eq 0 ]; then
+    /usr/sbin/nginx -s reload
+fi
+
+# Log du renouvellement
+echo "$(date): Certificats SSL vérifiés/renouvelés" >> /var/log/ssl-renewal.log
+EOF
+
+chmod +x /etc/cron.daily/certbot-renew
+
+# Test du renouvellement
+echo "Test du processus de renouvellement..."
+certbot renew --dry-run
+
+echo "Configuration SSL terminée"
+\end{lstlisting}
+
+Cette documentation technique fournit tous les éléments nécessaires pour :
+
+\begin{itemize}
+    \item Installer et configurer l'application complète
+    \item Déployer en production avec des scripts automatisés
+    \item Configurer Nginx comme reverse proxy avec SSL
+    \item Mettre en place un monitoring complet
+    \item Sécuriser le serveur avec firewall et SSL
+\end{itemize}
+
+Les scripts fournis sont prêts à l'emploi et adaptés aux besoins spécifiques de la commune d'Azrou.

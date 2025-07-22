@@ -1,0 +1,955 @@
+\chapter{Déploiement et perspectives d'évolution}
+
+\section{Stratégie de déploiement}
+
+\subsection{Architecture de déploiement}
+
+La stratégie de déploiement de la plateforme municipale d'Azrou adopte une approche moderne basée sur le cloud computing, garantissant la scalabilité, la haute disponibilité et la facilité de maintenance.
+
+\begin{figure}[H]
+\centering
+% Diagramme d'architecture de déploiement (à créer)
+\caption{Architecture de déploiement cloud}
+\label{fig:architecture-deploiement}
+\end{figure}
+
+\subsubsection{Environnements de déploiement}
+
+\begin{table}[H]
+\centering
+\caption{Configuration des environnements}
+\begin{tabular}{|l|p{3cm}|p{3cm}|p{3cm}|p{3cm}|}
+\hline
+\textbf{Aspect} & \textbf{Développement} & \textbf{Test} & \textbf{Staging} & \textbf{Production} \\
+\hline
+Frontend & Vite Dev Server & Netlify & Vercel Preview & Vercel Production \\
+Backend & Node.js Local & Railway Test & Railway Staging & Railway Production \\
+Base de données & MongoDB Local & MongoDB Atlas Test & MongoDB Atlas Staging & MongoDB Atlas Production \\
+Stockage fichiers & Local & Cloudinary Test & Cloudinary Staging & Cloudinary Production \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Configuration du déploiement}
+
+\subsubsection{Configuration Vercel pour le Frontend}
+
+\begin{lstlisting}[language=JSON, caption=vercel.json]
+{
+  "version": 2,
+  "name": "azrou-municipal-platform",
+  "builds": [
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "https://azrou-backend-production.railway.app/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ],
+  "env": {
+    "VITE_BACKEND_URL": "https://azrou-backend-production.railway.app"
+  },
+  "functions": {
+    "app/api/preview.js": {
+      "maxDuration": 30
+    }
+  }
+}
+\end{lstlisting}
+
+\subsubsection{Configuration Railway pour le Backend}
+
+\begin{lstlisting}[language=JSON, caption=railway.json]
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "numReplicas": 2,
+    "restartPolicyType": "ON_FAILURE",
+    "sleepApplication": false
+  },
+  "environments": {
+    "production": {
+      "variables": {
+        "NODE_ENV": "production",
+        "PORT": "$PORT"
+      },
+      "serviceConnect": {
+        "mongo": "${{Mongo.DATABASE_URL}}"
+      }
+    }
+  }
+}
+\end{lstlisting}
+
+\subsubsection{Configuration MongoDB Atlas}
+
+\begin{lstlisting}[language=JavaScript, caption=Production database config]
+// config/mongodb.js
+import mongoose from 'mongoose';
+
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(process.env.MONGODB_URI, {
+            // Options pour la production
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 45000,
+            bufferCommands: false,
+            bufferMaxEntries: 0,
+            
+            // Nouvelles options recommandées
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+
+        console.log(`MongoDB connecté: ${conn.connection.host}`);
+
+        // Configuration des index pour les performances
+        await createIndexes();
+        
+    } catch (error) {
+        console.error('Erreur de connexion MongoDB:', error);
+        process.exit(1);
+    }
+};
+
+const createIndexes = async () => {
+    try {
+        // Index pour la collection users
+        await mongoose.connection.db.collection('users').createIndexes([
+            { key: { email: 1 }, unique: true },
+            { key: { phone: 1 }, unique: true },
+            { key: { role: 1 } },
+            { key: { createdAt: -1 } }
+        ]);
+
+        // Index pour la collection appointments
+        await mongoose.connection.db.collection('appointments').createIndexes([
+            { key: { userId: 1, date: -1 } },
+            { key: { serviceId: 1, slotDate: 1 } },
+            { key: { cancelled: 1, completed: 1 } },
+            { key: { createdAt: -1 } }
+        ]);
+
+        console.log('Index de base de données créés avec succès');
+    } catch (error) {
+        console.error('Erreur création d\'index:', error);
+    }
+};
+
+export default connectDB;
+\end{lstlisting}
+
+\section{Pipeline CI/CD}
+
+\subsection{Configuration GitHub Actions}
+
+\subsubsection{Workflow de déploiement automatique}
+
+\begin{lstlisting}[language=YAML, caption=.github/workflows/deploy.yml]
+name: Deploy to Production
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:5.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: root
+          MONGO_INITDB_ROOT_PASSWORD: password
+        ports:
+          - 27017:27017
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install backend dependencies
+        working-directory: ./backend
+        run: npm ci
+      
+      - name: Run backend tests
+        working-directory: ./backend
+        run: npm test
+        env:
+          NODE_ENV: test
+          MONGODB_URI: mongodb://root:password@localhost:27017/test?authSource=admin
+          JWT_SECRET: test_jwt_secret
+      
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+      
+      - name: Run frontend tests
+        working-directory: ./frontend
+        run: npm test
+      
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          VITE_BACKEND_URL: ${{ secrets.BACKEND_URL }}
+
+  deploy-backend:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy to Railway
+        uses: railway/deploy@v1
+        with:
+          token: ${{ secrets.RAILWAY_TOKEN }}
+          project: ${{ secrets.RAILWAY_PROJECT_ID }}
+          service: backend
+
+  deploy-frontend:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy to Vercel
+        uses: vercel/action@v1
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          working-directory: ./frontend
+
+  deploy-admin:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy Admin Panel
+        uses: vercel/action@v1
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_ADMIN_PROJECT_ID }}
+          working-directory: ./admin
+
+  notify:
+    needs: [deploy-backend, deploy-frontend, deploy-admin]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: Notify deployment status
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          channel: '#deployments'
+          text: |
+            Déploiement de la plateforme municipale Azrou:
+            - Backend: ${{ needs.deploy-backend.result }}
+            - Frontend: ${{ needs.deploy-frontend.result }}
+            - Admin: ${{ needs.deploy-admin.result }}
+\end{lstlisting}
+
+\subsection{Monitoring et alertes}
+
+\subsubsection{Configuration du monitoring}
+
+\begin{lstlisting}[language=JavaScript, caption=monitoring.js]
+import express from 'express';
+import { createPrometheusMetrics } from 'prometheus-api-metrics';
+
+const app = express();
+
+// Métriques Prometheus
+app.use(createPrometheusMetrics());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    const healthCheck = {
+        uptime: process.uptime(),
+        message: 'OK',
+        timestamp: Date.now(),
+        environment: process.env.NODE_ENV,
+        version: process.env.npm_package_version
+    };
+    
+    res.status(200).json(healthCheck);
+});
+
+// Endpoint de métriques détaillées
+app.get('/metrics/detailed', async (req, res) => {
+    try {
+        const metrics = {
+            system: {
+                memory: process.memoryUsage(),
+                cpu: process.cpuUsage(),
+                uptime: process.uptime()
+            },
+            database: await getDatabaseMetrics(),
+            application: await getApplicationMetrics()
+        };
+        
+        res.json(metrics);
+    } catch (error) {
+        res.status(500).json({ error: 'Unable to collect metrics' });
+    }
+});
+
+const getDatabaseMetrics = async () => {
+    try {
+        const mongoose = await import('mongoose');
+        const db = mongoose.connection.db;
+        
+        const stats = await db.stats();
+        const collections = await db.listCollections().toArray();
+        
+        return {
+            status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+            collections: collections.length,
+            dataSize: stats.dataSize,
+            storageSize: stats.storageSize,
+            indexSize: stats.indexSize
+        };
+    } catch (error) {
+        return { status: 'error', message: error.message };
+    }
+};
+
+const getApplicationMetrics = async () => {
+    return {
+        activeConnections: 0, // À implémenter selon le contexte
+        requestsPerMinute: 0, // À implémenter avec un compteur
+        averageResponseTime: 0, // À implémenter avec des métriques
+        errorRate: 0 // À implémenter avec un tracker d'erreurs
+    };
+};
+
+export default app;
+\end{lstlisting}
+
+\section{Configuration de sécurité en production}
+
+\subsection{Variables d'environnement}
+
+\subsubsection{Configuration sécurisée}
+
+\begin{lstlisting}[caption=.env.production]
+# Configuration de base
+NODE_ENV=production
+PORT=4000
+
+# Base de données
+MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/azrou_production?retryWrites=true&w=majority
+
+# JWT Configuration
+JWT_SECRET=super_secure_jwt_secret_with_at_least_32_characters_for_production
+JWT_EXPIRES_IN=7d
+
+# Services externes
+CLOUDINARY_CLOUD_NAME=azrou-municipal
+CLOUDINARY_API_KEY=123456789012345
+CLOUDINARY_API_SECRET=very_secure_api_secret
+
+# Email Configuration
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=noreply@azrou-municipality.ma
+SMTP_PASS=secure_email_password
+
+# Sécurité
+CORS_ORIGIN=https://azrou-municipality.com,https://admin.azrou-municipality.com
+RATE_LIMIT_WINDOW_MS=900000
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Monitoring
+SENTRY_DSN=https://your-sentry-dsn@sentry.io/project-id
+LOG_LEVEL=error
+
+# Backup Configuration
+BACKUP_SCHEDULE=0 2 * * *
+BACKUP_RETENTION_DAYS=30
+\end{lstlisting}
+
+\subsection{Configuration de sécurité avancée}
+
+\subsubsection{Middleware de sécurité}
+
+\begin{lstlisting}[language=JavaScript, caption=security-middleware.js]
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+import mongoSanitize from 'express-mongo-sanitize';
+import xss from 'xss-clean';
+import hpp from 'hpp';
+import cors from 'cors';
+
+export const securityMiddleware = (app) => {
+    // Helmet pour sécuriser les headers HTTP
+    app.use(helmet({
+        contentSecurityPolicy: {
+            directives: {
+                defaultSrc: ["'self'"],
+                styleSrc: [
+                    "'self'", 
+                    "'unsafe-inline'", 
+                    "https://fonts.googleapis.com",
+                    "https://cdn.tailwindcss.com"
+                ],
+                fontSrc: [
+                    "'self'", 
+                    "https://fonts.gstatic.com"
+                ],
+                imgSrc: [
+                    "'self'", 
+                    "data:", 
+                    "https://res.cloudinary.com"
+                ],
+                scriptSrc: [
+                    "'self'",
+                    "'unsafe-eval'", // Nécessaire pour le mode dev
+                    "https://cdn.tailwindcss.com"
+                ],
+                connectSrc: [
+                    "'self'",
+                    "https://api.azrou-municipality.com"
+                ]
+            }
+        },
+        crossOriginEmbedderPolicy: false
+    }));
+
+    // CORS Configuration
+    const corsOptions = {
+        origin: function (origin, callback) {
+            const allowedOrigins = process.env.CORS_ORIGIN?.split(',') || ['http://localhost:3000'];
+            
+            // Permettre les requêtes sans origine (mobile apps, etc.)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.indexOf(origin) !== -1) {
+                callback(null, true);
+            } else {
+                callback(new Error('Non autorisé par CORS'));
+            }
+        },
+        credentials: true,
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'Authorization']
+    };
+    
+    app.use(cors(corsOptions));
+
+    // Rate limiting
+    const limiter = rateLimit({
+        windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
+        max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
+        message: {
+            success: false,
+            message: 'Trop de requêtes depuis cette IP, veuillez réessayer plus tard.'
+        },
+        standardHeaders: true,
+        legacyHeaders: false,
+        // Exclure certaines routes du rate limiting
+        skip: (req) => {
+            return req.path === '/health' || req.path === '/metrics';
+        }
+    });
+    
+    app.use('/api/', limiter);
+
+    // Rate limiting spécial pour l'authentification
+    const authLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 5, // 5 tentatives par IP
+        message: {
+            success: false,
+            message: 'Trop de tentatives de connexion, veuillez réessayer dans 15 minutes.'
+        }
+    });
+    
+    app.use('/api/user/login', authLimiter);
+    app.use('/api/user/register', authLimiter);
+
+    // Protection contre les injections NoSQL
+    app.use(mongoSanitize());
+
+    // Protection contre XSS
+    app.use(xss());
+
+    // Protection contre la pollution des paramètres HTTP
+    app.use(hpp({
+        whitelist: ['sort', 'fields', 'page', 'limit', 'department']
+    }));
+
+    // Middleware de logging des requêtes suspectes
+    app.use('/api/', (req, res, next) => {
+        const suspiciousPatterns = [
+            /script/i,
+            /javascript:/i,
+            /onload/i,
+            /onerror/i,
+            /<.*>/,
+            /union.*select/i,
+            /drop.*table/i
+        ];
+
+        const requestData = JSON.stringify({
+            body: req.body,
+            query: req.query,
+            params: req.params
+        });
+
+        const isSuspicious = suspiciousPatterns.some(pattern => 
+            pattern.test(requestData)
+        );
+
+        if (isSuspicious) {
+            console.warn('Requête suspecte détectée:', {
+                ip: req.ip,
+                method: req.method,
+                url: req.url,
+                userAgent: req.get('User-Agent'),
+                body: req.body,
+                timestamp: new Date().toISOString()
+            });
+            
+            // En production, on pourrait envoyer cette info à un système de monitoring
+        }
+
+        next();
+    });
+};
+\end{lstlisting}
+
+\section{Sauvegarde et récupération}
+
+\subsection{Stratégie de sauvegarde}
+
+\subsubsection{Script de sauvegarde automatique}
+
+\begin{lstlisting}[language=JavaScript, caption=backup-script.js]
+import { MongoClient } from 'mongodb';
+import { createWriteStream } from 'fs';
+import { spawn } from 'child_process';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import cron from 'node-cron';
+import path from 'path';
+
+class BackupService {
+    constructor() {
+        this.mongoUri = process.env.MONGODB_URI;
+        this.s3Client = new S3Client({
+            region: process.env.AWS_REGION,
+            credentials: {
+                accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+                secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+            }
+        });
+    }
+
+    // Sauvegarde complète de la base de données
+    async createFullBackup() {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupName = `azrou-municipal-backup-${timestamp}`;
+        const backupPath = `./backups/${backupName}`;
+
+        try {
+            console.log(`Démarrage de la sauvegarde: ${backupName}`);
+
+            // Utiliser mongodump pour créer la sauvegarde
+            await this.executeMongoCommand('mongodump', [
+                '--uri', this.mongoUri,
+                '--out', backupPath,
+                '--gzip'
+            ]);
+
+            // Compresser la sauvegarde
+            const archivePath = await this.compressBackup(backupPath, backupName);
+
+            // Upload vers S3 (ou autre service de stockage)
+            await this.uploadBackupToS3(archivePath, backupName);
+
+            // Nettoyer les fichiers locaux
+            await this.cleanupLocalFiles(backupPath, archivePath);
+
+            console.log(`Sauvegarde complétée avec succès: ${backupName}`);
+            
+            // Nettoyer les anciennes sauvegardes
+            await this.cleanupOldBackups();
+
+            return { success: true, backupName };
+        } catch (error) {
+            console.error('Erreur lors de la sauvegarde:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Sauvegarde incrémentale (collections modifiées)
+    async createIncrementalBackup() {
+        const lastBackupTime = await this.getLastBackupTime();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const backupName = `azrou-municipal-incremental-${timestamp}`;
+
+        try {
+            console.log(`Démarrage de la sauvegarde incrémentale: ${backupName}`);
+
+            const client = new MongoClient(this.mongoUri);
+            await client.connect();
+            
+            const db = client.db();
+            const collections = await db.listCollections().toArray();
+            const changes = {};
+
+            // Vérifier les modifications dans chaque collection
+            for (const collection of collections) {
+                const collectionName = collection.name;
+                const coll = db.collection(collectionName);
+                
+                // Rechercher les documents modifiés depuis la dernière sauvegarde
+                const modifiedDocs = await coll.find({
+                    $or: [
+                        { updatedAt: { $gt: lastBackupTime } },
+                        { createdAt: { $gt: lastBackupTime } }
+                    ]
+                }).toArray();
+
+                if (modifiedDocs.length > 0) {
+                    changes[collectionName] = modifiedDocs;
+                }
+            }
+
+            await client.close();
+
+            if (Object.keys(changes).length > 0) {
+                // Sauvegarder les modifications
+                const backupData = {
+                    timestamp: new Date(),
+                    lastBackupTime,
+                    changes
+                };
+
+                await this.saveIncrementalBackup(backupData, backupName);
+                console.log(`Sauvegarde incrémentale complétée: ${backupName}`);
+            } else {
+                console.log('Aucune modification détectée, sauvegarde incrémentale ignorée');
+            }
+
+        } catch (error) {
+            console.error('Erreur lors de la sauvegarde incrémentale:', error);
+        }
+    }
+
+    // Restauration depuis une sauvegarde
+    async restoreFromBackup(backupName, targetDatabase = null) {
+        try {
+            console.log(`Restauration depuis: ${backupName}`);
+
+            // Télécharger la sauvegarde depuis S3
+            const backupPath = await this.downloadBackupFromS3(backupName);
+
+            // Décompresser la sauvegarde
+            const extractedPath = await this.extractBackup(backupPath);
+
+            // Utiliser mongorestore
+            const restoreUri = targetDatabase || this.mongoUri;
+            await this.executeMongoCommand('mongorestore', [
+                '--uri', restoreUri,
+                '--gzip',
+                '--drop', // Supprimer les collections existantes
+                extractedPath
+            ]);
+
+            // Nettoyer les fichiers temporaires
+            await this.cleanupLocalFiles(backupPath, extractedPath);
+
+            console.log(`Restauration complétée avec succès: ${backupName}`);
+            return { success: true };
+
+        } catch (error) {
+            console.error('Erreur lors de la restauration:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Planifier les sauvegardes automatiques
+    scheduleBackups() {
+        // Sauvegarde complète quotidienne à 2h du matin
+        cron.schedule(process.env.BACKUP_SCHEDULE || '0 2 * * *', () => {
+            console.log('Démarrage de la sauvegarde quotidienne programmée');
+            this.createFullBackup();
+        }, {
+            timezone: "Africa/Casablanca"
+        });
+
+        // Sauvegarde incrémentale toutes les 4 heures
+        cron.schedule('0 */4 * * *', () => {
+            console.log('Démarrage de la sauvegarde incrémentale programmée');
+            this.createIncrementalBackup();
+        }, {
+            timezone: "Africa/Casablanca"
+        });
+
+        console.log('Planification des sauvegardes activée');
+    }
+
+    // Méthodes utilitaires privées
+    async executeMongoCommand(command, args) {
+        return new Promise((resolve, reject) => {
+            const process = spawn(command, args);
+            
+            let output = '';
+            let error = '';
+
+            process.stdout.on('data', (data) => {
+                output += data.toString();
+            });
+
+            process.stderr.on('data', (data) => {
+                error += data.toString();
+            });
+
+            process.on('close', (code) => {
+                if (code === 0) {
+                    resolve(output);
+                } else {
+                    reject(new Error(`${command} failed: ${error}`));
+                }
+            });
+        });
+    }
+
+    async compressBackup(sourcePath, backupName) {
+        // Implémentation de la compression
+        // Retourner le chemin du fichier compressé
+    }
+
+    async uploadBackupToS3(filePath, backupName) {
+        // Implémentation de l'upload S3
+    }
+
+    async cleanupOldBackups() {
+        const retentionDays = parseInt(process.env.BACKUP_RETENTION_DAYS) || 30;
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+        
+        // Supprimer les sauvegardes anciennes
+        // Implémentation selon le service de stockage utilisé
+    }
+}
+
+export default BackupService;
+\end{lstlisting}
+
+\section{Perspectives d'évolution}
+
+\subsection{Fonctionnalités futures}
+
+\subsubsection{Roadmap technique}
+
+\begin{table}[H]
+\centering
+\caption{Roadmap des évolutions prévues}
+\begin{tabular}{|l|p{5cm}|p{3cm}|p{3cm}|}
+\hline
+\textbf{Phase} & \textbf{Fonctionnalités} & \textbf{Délai} & \textbf{Priorité} \\
+\hline
+Phase 2 & 
+Application mobile native (React Native), 
+Notifications push,
+Intégration système de paiement mobile & 
+3-6 mois & Haute \\
+\hline
+Phase 3 & 
+Intelligence artificielle pour support client,
+Tableau de bord analytique avancé,
+Intégration IoT (capteurs urbains) & 
+6-12 mois & Moyenne \\
+\hline
+Phase 4 & 
+Blockchain pour traçabilité,
+Réalité augmentée pour services urbains,
+API publique pour développeurs tiers & 
+12-18 mois & Basse \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Évolutions technologiques envisagées}
+
+\textbf{Migration vers les microservices}
+\begin{itemize}
+\item Découpage de l'architecture monolithique actuelle
+\item Services spécialisés : authentification, notifications, paiements
+\item Utilisation de Docker et Kubernetes pour l'orchestration
+\item API Gateway pour la gestion centralisée des requêtes
+\end{itemize}
+
+\textbf{Intégration de l'Intelligence Artificielle}
+\begin{itemize}
+\item Chatbot intelligent pour le support citoyen 24/7
+\item Analyse prédictive des demandes municipales
+\item Recommandations personnalisées de services
+\item Détection automatique de fraudes et anomalies
+\end{itemize}
+
+\textbf{Progressive Web App (PWA) avancée}
+\begin{itemize}
+\item Fonctionnalités offline complètes
+\item Synchronisation automatique des données
+\item Installation sur les appareils mobiles
+\item Notifications push web natives
+\end{itemize}
+
+\subsection{Optimisations techniques}
+
+\subsubsection{Performance et scalabilité}
+
+\textbf{Mise en cache avancée}
+\begin{lstlisting}[language=JavaScript, caption=Stratégie de cache Redis]
+import Redis from 'ioredis';
+
+class CacheService {
+    constructor() {
+        this.redis = new Redis({
+            host: process.env.REDIS_HOST,
+            port: process.env.REDIS_PORT,
+            password: process.env.REDIS_PASSWORD,
+            retryStrategy: (times) => Math.min(times * 50, 2000)
+        });
+    }
+
+    // Cache des services municipaux (TTL: 1 heure)
+    async cacheServices(services) {
+        await this.redis.setex('municipal:services', 3600, JSON.stringify(services));
+    }
+
+    // Cache des créneaux disponibles (TTL: 15 minutes)
+    async cacheAvailableSlots(serviceId, date, slots) {
+        const key = `slots:${serviceId}:${date}`;
+        await this.redis.setex(key, 900, JSON.stringify(slots));
+    }
+
+    // Cache des statistiques dashboard (TTL: 30 minutes)
+    async cacheDashboardStats(stats) {
+        await this.redis.setex('dashboard:stats', 1800, JSON.stringify(stats));
+    }
+
+    // Invalidation intelligente du cache
+    async invalidateCache(pattern) {
+        const keys = await this.redis.keys(pattern);
+        if (keys.length > 0) {
+            await this.redis.del(...keys);
+        }
+    }
+
+    // Cache distribué pour sessions utilisateur
+    async setUserSession(userId, sessionData, ttl = 7200) {
+        await this.redis.setex(`session:${userId}`, ttl, JSON.stringify(sessionData));
+    }
+}
+\end{lstlisting}
+
+\textbf{Optimisation des requêtes base de données}
+\begin{itemize}
+\item Pagination avancée avec curseurs
+\item Requêtes aggregation optimisées
+\item Index composites pour les requêtes complexes
+\item Connection pooling adaptatif selon la charge
+\end{itemize}
+
+\subsection{Intégrations futures}
+
+\subsubsection{Écosystème gouvernemental}
+
+\textbf{Interopérabilité avec les services nationaux}
+\begin{itemize}
+\item Intégration avec le système d'identité numérique national
+\item Connexion aux bases de données de l'état civil
+\item Synchronisation avec les services fiscaux
+\item Échange de données avec d'autres collectivités
+\end{itemize}
+
+\textbf{Services tiers}
+\begin{itemize}
+\item Intégration systèmes de paiement locaux (CIH Bank, Attijariwafa Bank)
+\item Services de SMS et email (Orange, Maroc Telecom)
+\item Solutions de signature électronique
+\item Plateformes de géolocalisation avancées
+\end{itemize}
+
+\section{Maintenance et support}
+
+\subsection{Stratégie de maintenance}
+
+\subsubsection{Maintenance préventive}
+
+\begin{table}[H]
+\centering
+\caption{Planning de maintenance}
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Type} & \textbf{Fréquence} & \textbf{Actions} & \textbf{Durée} \\
+\hline
+Quotidienne & Automatique & Sauvegardes, logs, monitoring & Continue \\
+Hebdomadaire & Dimanche 2h-4h & Mise à jour sécurité, nettoyage cache & 2h \\
+Mensuelle & 1er dimanche & Optimisation BDD, audit performances & 4h \\
+Trimestrielle & Planifiée & Mise à jour majeure, tests de charge & 8h \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Plan de support}
+
+\textbf{Niveaux de support}
+\begin{itemize}
+\item \textbf{Niveau 1} : Support utilisateur de base (hotline citoyens)
+\item \textbf{Niveau 2} : Support technique fonctionnel (agents municipaux)
+\item \textbf{Niveau 3} : Support technique avancé (développement)
+\item \textbf{Niveau 4} : Support éditeur et infrastructure (cloud providers)
+\end{itemize}
+
+\textbf{SLA (Service Level Agreement)}
+\begin{itemize}
+\item \textbf{Incidents critiques} : Résolution sous 2h, disponibilité 24/7
+\item \textbf{Incidents majeurs} : Résolution sous 8h, jours ouvrables
+\item \textbf{Incidents mineurs} : Résolution sous 48h
+\item \textbf{Demandes d'évolution} : Traitement sous 15 jours
+\end{itemize}
+
+Cette stratégie complète de déploiement et d'évolution assure la pérennité et l'amélioration continue de la plateforme municipale d'Azrou, tout en anticipant les besoins futurs des citoyens et de l'administration.
